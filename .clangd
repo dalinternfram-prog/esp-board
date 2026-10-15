@@ -1,0 +1,55 @@
+# CompileFlags:
+#     Remove: [-f*, -m*]
+# CompileFlags:
+#   Remove: [-target, xtensa-esp32s3-unknown-elf, --target=xtensa-esp32s3-unknown-elf]
+#   Add: [--target=x86_64-unknown-linux-gnu]
+
+
+
+
+
+
+
+
+
+
+
+
+
+# CompileFlags:
+#   Remove:
+#     - -target
+#     - xtensa-esp32s3-unknown-elf
+#     - --target=xtensa-esp32s3-unknown-elf
+#     - -f*
+#     - -m*
+#   Add:
+#     - --target=x86_64-unknown-linux-gnu
+#     - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/xtensa-esp-elf/include
+# Diagnostics:
+#   UnusedIncludes: None
+
+
+CompileFlags:
+  Remove:
+    - -target
+    - xtensa-esp32s3-unknown-elf
+    - --target=xtensa-esp32s3-unknown-elf
+    - -mlongcalls
+    - -mdisable-hardware-atomics
+    - -fno-shrink-wrap
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+    - -fzero-init-padding-bits-all
+    - -fno-malloc-dce
+    - -f*
+    - -m*
+  Add:
+    - --target=x86_64-unknown-linux-gnu
+    - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/xtensa-esp-elf/include
+    # Adds explicit inclusion for xtensa target headers:
+    - -I/home/emily/.espressif/v6.1/esp-idf/components/xtensa/include
+    - -I/home/emily/.espressif/v6.1/esp-idf/components/xtensa/xtensa32s3/include
+
+Diagnostics:
+  UnusedIncludes: None

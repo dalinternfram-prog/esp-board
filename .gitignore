@@ -1,0 +1,16 @@
+cat << 'EOF' > .gitignore
+# ESP-IDF Build directory
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# VSCode and IDE settings
+.vscode/
+compile_commands.json
+
+# Operating System files
+.DS_Store
+*.swp
+EOF
