@@ -89,8 +89,7 @@
 static const char* TAG = "AudioProcessor";
 
 namespace AudioProcessing {
-int wakeup_flag = 0;
-static   esp_afe_sr_iface_t *afe_handle = NULL;
+int wakeup_flag = 0; 
 static volatile int task_flag = 0;
 srmodel_list_t *models = NULL;
 
@@ -139,55 +138,55 @@ AudioProcessor::AudioProcessor()
     afe_config_t *afe_config = afe_config_init(esp_get_input_format(), models, AFE_TYPE_SR, AFE_MODE_LOW_COST);
     afe_config->ns_init = false;
     afe_config->vad_init = false;
-    afe_handle = const_cast<esp_afe_sr_iface_t*>(esp_afe_handle_from_config(afe_config));
-    esp_afe_sr_data_t *afe_data = afe_handle->create_from_config(afe_config);
+   this->afe_handle_   = const_cast<esp_afe_sr_iface_t*>(esp_afe_handle_from_config(afe_config));
+   this-> afe_data_ =    this->afe_handle_ ->create_from_config(afe_config);
     afe_config_free(afe_config);
 
 
 
 }
 
-// AudioProcessor::~AudioProcessor() {
-//     if (afe_handle_ != nullptr && afe_data_ != nullptr) {
-//         afe_handle_->destroy(afe_data_);
-//         afe_data_ = nullptr;
-//     }
-// }
+AudioProcessor::~AudioProcessor() {
+    if (   this->afe_handle_   != nullptr &&    this-> afe_data_  != nullptr) {
+      this->afe_handle_ ->destroy(   this-> afe_data_ );
+        this-> afe_data_  = nullptr;
+    }
+}
 
-// esp_err_t AudioProcessor::processNextFrame(ProcessedFrame& out_frame) {
-//     if (!capture_driver_) {
-//         return ESP_ERR_INVALID_STATE;
-//     }
+esp_err_t AudioProcessor::processNextFrame(ProcessedFrame& out_frame) {
+    if (!capture_driver_) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
-//     esp_err_t err = capture_driver_->readSamples();
-//     if (err != ESP_OK) {
-//         return err;
-//     }
+    esp_err_t err = capture_driver_->readSamples();
+    if (err != ESP_OK) {
+        return err;
+    }
 
-//     auto raw_buffer = capture_driver_->getFrameBuffer();
-//     if (raw_buffer.empty()) {
-//         return ESP_FAIL;
-//     }
+    auto raw_buffer = capture_driver_->getFrameBuffer();
+    if (raw_buffer.empty()) {
+        return ESP_FAIL;
+    }
 
-//     // 1. Feed raw audio into DSP engine
-//     afe_handle_->feed(afe_data_, raw_buffer.data());
+    // 1. Feed raw audio into DSP engine
+    afe_handle_->feed(afe_data_, raw_buffer.data());
 
-//     // 2. Fetch processed audio frame
-//     afe_fetch_result_t* fetch_result = afe_handle_->fetch(afe_data_);
-//     if (fetch_result == nullptr || fetch_result->ret_val == AFE_FETCH_ERROR) {
-//         return ESP_FAIL;
-//     }
+    // 2. Fetch processed audio frame
+    afe_fetch_result_t* fetch_result = afe_handle_->fetch(afe_data_);
+    if (fetch_result == nullptr || fetch_result->ret_value == ESP_FAIL) {
+        return ESP_FAIL;
+    }
 
-//     const std::size_t fetch_samples = fetch_result->data_size / sizeof(int16_t);
+    const std::size_t fetch_samples = fetch_result->data_size / sizeof(int16_t);
 
-//     // 3. Export clean audio frame
-//     out_frame.pcm_data = std::span<const int16_t>(
-//         reinterpret_cast<const int16_t*>(fetch_result->data),
-//         fetch_samples
-//     );
-//     out_frame.trigger_channel_id = static_cast<std::size_t>(fetch_result->trigger_channel_id);
+    // 3. Export clean audio frame
+    out_frame.pcm_data = std::span<const int16_t>(
+        reinterpret_cast<const int16_t*>(fetch_result->data),
+        fetch_samples
+    );
+    out_frame.trigger_channel_id = static_cast<std::size_t>(fetch_result->trigger_channel_id);
 
-//     return ESP_OK;
-// }
+    return ESP_OK;
+}
 
 } // namespace AudioProcessing

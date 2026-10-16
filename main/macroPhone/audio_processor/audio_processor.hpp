@@ -3,12 +3,10 @@
 #include "audio_capture_driver.hpp"
 
 #include <span>
-#include <cstdint>
-#include <cstddef>
-#include <memory>
 #include "esp_err.h"
 #include "esp_afe_sr_iface.h" // Includes official typedefs for esp_afe_sr_iface_t and esp_afe_sr_data_t
 #include "esp_afe_sr_models.h"
+#include<memory>
 struct esp_afe_sr_data_s; 
 
 namespace AudioProcessing {
@@ -46,8 +44,8 @@ public:
 
 private:
     std::unique_ptr<Hardware::AudioCaptureDriver> capture_driver_;
-   const  esp_afe_sr_iface_t* afe_handle_ ;
-    esp_afe_sr_data_s* afe_data_ ;
+      esp_afe_sr_iface_t* afe_handle_ ;
+    esp_afe_sr_data_t* afe_data_ ;
     srmodel_list_t *models;
 };
 } // namespace AudioProcessing

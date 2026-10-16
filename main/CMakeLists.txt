@@ -69,6 +69,7 @@ set(SOURCES
     "./button_driver/button_driver.c"
     "./rgb_led_driver/rgb_led_driver.c"
     "./Network/wifi_driver/wifi_manager.c"
+        "./Network/kcp/ikcp.c"
        "./audio/AudioStreamer.cpp"
 )
 
@@ -85,6 +86,7 @@ set(INCLUDE_DIRS
     "./button_driver"
     "./rgb_led_driver"
     "./Network/wifi_driver"
+      "./Network/kcp"
 )
 # 注册组件
 # idf_component_register(
