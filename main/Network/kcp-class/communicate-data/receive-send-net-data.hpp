@@ -59,7 +59,7 @@
 
 //     return received;
 // }
-
+#pragma once
 
 #include <sys/socket.h>
 #include <esp_log.h>

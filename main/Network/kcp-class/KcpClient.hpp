@@ -318,12 +318,15 @@ class KcpClient {
 private:
     ikcpcb* kcp_ = nullptr;
     UdpConnection conn_;
-    uint32_t conv_id_ = 0x20260315;
+    
+    protected:
 
-    static int kcp_output_callback(const char* buf, int len, ikcpcb* kcp, void* user);
+    uint32_t conv_id_ ;
+
+   // static int kcp_output_callback(const char* buf, int len, ikcpcb* kcp, void* user);
 
 public:
-    KcpClient() = default;
+    KcpClient(uint32_t conv_id) :conv_id_(conv_id){};
     ~KcpClient();
 
     // Prevent copying

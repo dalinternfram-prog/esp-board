@@ -22,6 +22,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* disconn = (wifi_event_sta_disconnected_t*) event_data;
+    ESP_LOGW(TAG, "Disconnected reason: %d", disconn->reason);
         s_is_connected = false;
         if (s_retry_num < 10) {
             esp_wifi_connect();

@@ -9,8 +9,8 @@
 #include "mic_speech.h"
 #include "audio_driver.h"
 #include "rgb_led_driver.h"
-#include "button_driver.h"
-
+#include "button_driver.h" 
+#include "wifi_manager.h" 
 static char *TAG = "app main";
 
 #define MAX_MP3_FILE    50
@@ -19,6 +19,7 @@ static uint16_t Search_mp3_file_count = 0;
 static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
 
+ void app_run_loop();
 // 按键回调函数
 static void on_key_event(key_id_t id, key_event_t event, void *user_data) 
 {
@@ -204,18 +205,42 @@ static void Search_mp3_Music(void)
 }
 
 void app_main()
-{
-    ESP_ERROR_CHECK(esp_board_init(16000, 2, 16));
-    tca9555_driver_init();
-    esp_sdcard_init("/sdcard", 10);
-    Speech_Init();
-    Speech_register_callback(Speech_event_callback);
-    Audio_Play_Init();
-    RGB_Example();
+{ 
 
-    key_module_init(NULL);
-    key_register_callback(on_key_event);
+            ESP_LOGI("++++++++++++","Hello,can you hear me???" );
+    ESP_ERROR_CHECK(esp_board_init(16000, 2, 16));
+
+            ESP_LOGI("++++++++++++","success esp_board_init" );
+   tca9555_driver_init();
+
+            ESP_LOGI("++++++++++++","success tca9555_driver_init" );
+     esp_sdcard_init("/sdcard", 10);
     
-    Search_mp3_Music();
+            ESP_LOGI("++++++++++++","success esp_sdcard_init" );
+   Speech_Init();
+
+            ESP_LOGI("++++++++++++","success Speech_Init" );
+   Speech_register_callback(Speech_event_callback);
+
+            ESP_LOGI("++++++++++++","success Speech_register_callback" );
+    Audio_Play_Init();
+
+            ESP_LOGI("++++++++++++","success Audio_Play_Init" );
+     RGB_Example();
+
+            ESP_LOGI("++++++++++++","success RGB_Example" );
+     key_module_init(NULL);
+
+            ESP_LOGI("++++++++++++","success key_module_init" );
+     key_register_callback(on_key_event);
+    
+            ESP_LOGI("++++++++++++","success key_register_callback" );
+     Search_mp3_Music();
+
+            ESP_LOGI("++++++++++++","success Search_mp3_Music" );
+
+
+app_run_loop();
+
 }
 
