@@ -178,7 +178,7 @@ extern "C" {
 #define LED_STRIP_GPIO_PIN  38
 #define LED_STRIP_LED_COUNT 7
 
-
+i2s_chan_handle_t bsp_i2s_get_rx_handle(void);
 esp_err_t esp_board_init(uint32_t sample_rate, int channel_format, int bits_per_chan);
 
 esp_err_t esp_sdcard_init(char *mount_point, size_t max_files);

@@ -51,7 +51,10 @@ static esp_codec_dev_handle_t play_dev        = NULL;
 static i2c_master_bus_handle_t i2c_bus_handle = NULL;
 static uint32_t SDCard_Size  = 0;
 
-
+i2s_chan_handle_t bsp_i2s_get_rx_handle(void)
+{
+    return rx_handle;
+}
 esp_codec_dev_handle_t esp_ret_play_dev(void)
 {
     return play_dev;

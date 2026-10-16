@@ -161,4 +161,4 @@ esp_err_t Speech_register_callback(esp_sr_event_callback_t callback)
     if (!callback) return ESP_ERR_INVALID_ARG;
     spench_callback = callback;
     return ESP_OK;
-}
+} 

@@ -217,7 +217,7 @@ void app_main()
      esp_sdcard_init("/sdcard", 10);
     
             ESP_LOGI("++++++++++++","success esp_sdcard_init" );
-   Speech_Init();
+   //Speech_Init();
 
             ESP_LOGI("++++++++++++","success Speech_Init" );
    Speech_register_callback(Speech_event_callback);

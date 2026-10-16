@@ -3,7 +3,11 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "bsp_board.h" // Hardware BSP layer
+#include "driver/i2s_std.h"
+#include "portmacro.h"
 
+//* this class can now only handle one i2s line,which each has its own rx_handle;
+//*
 static const char* TAG = "AudioCaptureDriver";
 
 // Default standard AFE audio frame size for 16kHz sampling (e.g., 32ms frame = 512 samples)
@@ -13,7 +17,31 @@ namespace Hardware {
 
 AudioCaptureDriver::AudioCaptureDriver() {
     // 1. Discover hardware configuration directly from BSP
-    channel_count_ = static_cast<std::size_t>(esp_get_feed_channel());
+   // channel_count_ = static_cast<std::size_t>(esp_get_feed_channel());
+
+ 
+
+
+i2s_chan_info_t chan_info{};
+if (i2s_channel_get_info(bsp_i2s_get_rx_handle(), &chan_info) == ESP_OK) {
+    if (chan_info.mode == I2S_COMM_MODE_STD && chan_info.mode_cfg != nullptr) {
+        auto* std_cfg = static_cast<const i2s_std_config_t*>(chan_info.mode_cfg);
+        
+        // MONO slot mode = 1 channel, STEREO slot mode = 2 channels
+        channel_count_ = (std_cfg->slot_cfg.slot_mode == I2S_SLOT_MODE_MONO) ? 1 : 2;
+    } else {
+        
+       ESP_LOGW("++++++++++", "----  ==  --- default channel count = 2");
+        channel_count_ = 2; // Default hardware fallback for standard stereo
+        
+    }
+} else {
+ 
+    channel_count_ = 2;
+       ESP_LOGW("++++++++++", "default channel count = 2");
+}
+
+
     chunk_size_ = kDefaultChunkSize;
 
     const std::size_t total_samples = chunk_size_ * channel_count_;
@@ -66,24 +94,41 @@ void AudioCaptureDriver::freeBuffer() noexcept {
     }
 }
 
+// esp_err_t AudioCaptureDriver::readSamples() {
+//     if (raw_dma_buffer_ == nullptr) {
+//         return ESP_ERR_NO_MEM;
+//     }
+
+//     const std::size_t buffer_bytes = chunk_size_ * channel_count_ * sizeof(int16_t);
+
+//     // Fetch hardware audio directly into internal PSRAM buffer
+//     int bytes_read = esp_get_feed_data(true, raw_dma_buffer_, static_cast<int>(buffer_bytes));
+
+//     if (bytes_read <= 0) {
+//         ESP_LOGW(TAG, "Failed to fetch audio stream from hardware");
+//         return ESP_FAIL;
+//     }
+
+//     return ESP_OK;
+// }
 esp_err_t AudioCaptureDriver::readSamples() {
     if (raw_dma_buffer_ == nullptr) {
         return ESP_ERR_NO_MEM;
     }
 
     const std::size_t buffer_bytes = chunk_size_ * channel_count_ * sizeof(int16_t);
+    size_t bytes_read = 0;
 
-    // Fetch hardware audio directly into internal PSRAM buffer
-    int bytes_read = esp_get_feed_data(true, raw_dma_buffer_, static_cast<int>(buffer_bytes));
+// Use the handle returned when setting up i2s_new_rx_channel()
+    esp_err_t err = i2s_channel_read(bsp_i2s_get_rx_handle(), this->raw_dma_buffer_, buffer_bytes, &bytes_read, 1000);
 
-    if (bytes_read <= 0) {
-        ESP_LOGW(TAG, "Failed to fetch audio stream from hardware");
+    if (err != ESP_OK || bytes_read == 0) {
+        ESP_LOGW(TAG, "Failed to read PCM data directly from I2S");
         return ESP_FAIL;
     }
 
     return ESP_OK;
 }
-
 std::span<const int16_t> AudioCaptureDriver::getFrameBuffer() const noexcept {
     if (raw_dma_buffer_ == nullptr) {
         return {};
