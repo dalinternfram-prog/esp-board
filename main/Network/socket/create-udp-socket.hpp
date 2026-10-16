@@ -55,7 +55,7 @@ std::optional<UdpConnection> setup_production_udp_socket(const char* host, const
     }
 
     // 1. Create the socket using the family discovered by getaddrinfo
-    int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    int sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sock < 0) {
         ESP_LOGE("UDP", "Failed to create socket for family %d", res->ai_family);
         freeaddrinfo(res);
