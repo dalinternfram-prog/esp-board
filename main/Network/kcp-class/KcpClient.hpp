@@ -340,6 +340,7 @@ public:
     // Core Tick & Data Flow Methods
     void update(uint32_t current_ms);
  std::vector<uint8_t> poll_and_receive();
+ //* you can safly free data;
     int send(const uint8_t* data, size_t size);
 
     // Getters

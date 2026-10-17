@@ -16,8 +16,7 @@ const char* host ="10.165.11.156";
   const char* password= "cykcykcyk";
 
 
-
-extern "C" {
+ 
 
   void app_run_loop(){ 
 std::shared_ptr<Network::manager> s_NetworkManager = std::make_shared<Network::manager>(conv_id);
@@ -81,6 +80,4 @@ int16_t max_sample = 0;
 
 
 
-}
-}
- 
+} 

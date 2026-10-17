@@ -65,40 +65,21 @@ static std::optional<UdpConnection> setup_production_udp_socket(const char* host
     return conn;
 }
 
-// Helper: Non-blocking UDP send wrapper
-static bool udp_send(const UdpConnection& conn, const uint8_t* data, size_t len) {
-    if (!conn.is_valid()) {
-        ESP_LOGE(TAG, "Attempted to send on an invalid socket!");
-        return false;
-    }
-
-    ssize_t sent = sendto(conn.sock, data, len, 0, (struct sockaddr*)&conn.addr, conn.addr_len);
-    if (sent < 0) {
-        if (errno == EWOULDBLOCK || errno == EAGAIN) {
-            ESP_LOGW(TAG, "Send buffer full (EWOULDBLOCK). Packet dropped.");
-            return false;
-        } else {
-            ESP_LOGE(TAG, "sendto failed with error: %d", errno);
-            return false;
-        }
-    }
-    return true;
-}
-
 
 // KCP Output Bridge Callback
 static int  kcp_output_callback(const char* buf, int len, ikcpcb* kcp, void* user) {
-    auto* conn = static_cast<UdpConnection*>(user);
+    auto* conn = static_cast<socket::UdpConnection*>(user);
     if (!conn || !conn->is_valid()) {
         return -1;
     }
-    bool success = udp_send(*conn, reinterpret_cast<const uint8_t*>(buf), len);
+    bool success = communicate::udp_send(*conn, reinterpret_cast<const uint8_t*>(buf), len);
     return success ? 0 : -1;
 }
 
 KcpClient::~KcpClient() {
     close_connection();
 }
+
 std::vector<uint8_t> KcpClient::poll_and_receive() {
     if (!is_initialized()) return {};
 

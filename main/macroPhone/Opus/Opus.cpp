@@ -493,8 +493,9 @@ void SimpleOpusEncoder::deinit() {
     }
 }
 
-// Main encoding function: processes PCM audio into a raw buffer
-int SimpleOpusEncoder::encode(std::span<const int16_t> pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size) {
+ // Main encoding function: processes PCM audio into a raw buffer
+// CHANGED: Parameter type changed from std::span<const int16_t> to const std::vector<int16_t>&
+int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size) {
     // Validate that encoder is initialized
     if (m_handle == nullptr) {
         ESP_LOGE(TAG, "Encoder is uninitialized. Call init() first.");
@@ -508,10 +509,14 @@ int SimpleOpusEncoder::encode(std::span<const int16_t> pcm_samples, uint8_t* out
 
     // Prepare input frame structure expected by Espressif's audio process API
     esp_audio_enc_in_frame_t in_frame = {};
+    
     // Reinterpret signed 16-bit PCM pointer as unsigned byte pointer
-    in_frame.buffer = reinterpret_cast<uint8_t*>(const_cast<int16_t*>(pcm_samples.data()));
+    // CHANGED: Safe conversion from const vector pointer to uint8_t* to avoid modifying underlying data
+    in_frame.buffer = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(pcm_samples.data()));
+    
     // Set total length of input data in bytes (sample_count * 2)
-    in_frame.len = pcm_samples.size() * sizeof(int16_t);
+    // CHANGED: Uses vector size * sizeof(int16_t)
+    in_frame.len = static_cast<uint32_t>(pcm_samples.size() * sizeof(int16_t));
 
     // Prepare output frame structure to hold compressed packet data
     esp_audio_enc_out_frame_t out_frame = {};
@@ -539,7 +544,8 @@ int SimpleOpusEncoder::encode(std::span<const int16_t> pcm_samples, uint8_t* out
 }
 
 // Convenient overload function: returns compressed payload inside a standard std::vector
-std::vector<uint8_t> SimpleOpusEncoder::encode(std::span<const int16_t> pcm_samples, uint32_t max_output_size) {
+// CHANGED: Parameter type changed from std::span<const int16_t> to const std::vector<int16_t>&
+std::vector<uint8_t> SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint32_t max_output_size) {
     // Allocate temporary vector with maximum allocated capacity
     std::vector<uint8_t> output_vec(max_output_size);
 
@@ -556,3 +562,5 @@ std::vector<uint8_t> SimpleOpusEncoder::encode(std::span<const int16_t> pcm_samp
     // Return empty vector on failure or missing samples
     return {};
 }
+
+

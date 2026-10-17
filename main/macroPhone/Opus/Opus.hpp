@@ -171,10 +171,10 @@ public:
     void deinit();
 
     // Encodes PCM samples using a user-provided pre-allocated buffer (Zero dynamic allocations)
-    int encode(std::span<const int16_t> pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size);
+    int encode(const std::vector<int16_t>& pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size);
 
     // Encodes PCM samples and returns a standard vector containing the compressed Opus payload
-    std::vector<uint8_t> encode(std::span<const int16_t> pcm_samples, uint32_t max_output_size = 512);
+    std::vector<uint8_t> encode(const std::vector<int16_t>& pcm_samples, uint32_t max_output_size = 512);
 
     // Helper method to check if the internal handle is valid and ready
     [[nodiscard]] bool isInitialized() const { return m_handle != nullptr; }

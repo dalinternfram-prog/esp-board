@@ -5,13 +5,13 @@
 #include "bsp_board.h" // Hardware BSP layer
 #include "driver/i2s_std.h"
 #include "portmacro.h"
-
+#include "macroPhone/arguments.hpp"
 //* this class can now only handle one i2s line,which each has its own rx_handle;
 //*
 static const char* TAG = "AudioCaptureDriver";
 
 // Default standard AFE audio frame size for 16kHz sampling (e.g., 32ms frame = 512 samples)
-static constexpr std::size_t kDefaultChunkSize = 512;
+// static constexpr std::size_t kDefaultChunkSize = 512;
 
 namespace Hardware {
 
@@ -22,27 +22,32 @@ AudioCaptureDriver::AudioCaptureDriver() {
  
 
 
-i2s_chan_info_t chan_info{};
-if (i2s_channel_get_info(bsp_i2s_get_rx_handle(), &chan_info) == ESP_OK) {
-    if (chan_info.mode == I2S_COMM_MODE_STD && chan_info.mode_cfg != nullptr) {
-        auto* std_cfg = static_cast<const i2s_std_config_t*>(chan_info.mode_cfg);
+// i2s_chan_info_t chan_info{};
+// if (i2s_channel_get_info(bsp_i2s_get_rx_handle(), &chan_info) == ESP_OK) {
+//     if (chan_info.mode == I2S_COMM_MODE_STD && chan_info.mode_cfg != nullptr) {
+//         auto* std_cfg = static_cast<const i2s_std_config_t*>(chan_info.mode_cfg);
         
-        // MONO slot mode = 1 channel, STEREO slot mode = 2 channels
-        channel_count_ = (std_cfg->slot_cfg.slot_mode == I2S_SLOT_MODE_MONO) ? 1 : 2;
-    } else {
+//         // MONO slot mode = 1 channel, STEREO slot mode = 2 channels
+//         channel_count_ = (std_cfg->slot_cfg.slot_mode == I2S_SLOT_MODE_MONO) ? 1 : 2;
+//     } else {
         
-       ESP_LOGW("++++++++++", "----  ==  --- default channel count = 2");
-        channel_count_ = 2; // Default hardware fallback for standard stereo
+//        ESP_LOGW("++++++++++", "----  ==  --- default channel count = 2");
+//         channel_count_ = 2; // Default hardware fallback for standard stereo
         
-    }
-} else {
+//     }
+// } else {
  
-    channel_count_ = 2;
-       ESP_LOGW("++++++++++", "default channel count = 2");
-}
+//     channel_count_ = 2;
+//        ESP_LOGW("++++++++++", "default channel count = 2");
+// }
+
+channel_count_=macroPhone::argument::channel_count;
+chunk_size_=macroPhone::argument::kDefaultChunkSize;
 
 
-    chunk_size_ = kDefaultChunkSize;
+
+
+    //chunk_size_ = kDefaultChunkSize;
 
     const std::size_t total_samples = chunk_size_ * channel_count_;
     const std::size_t buffer_bytes = total_samples * sizeof(int16_t);
@@ -94,23 +99,7 @@ void AudioCaptureDriver::freeBuffer() noexcept {
     }
 }
 
-// esp_err_t AudioCaptureDriver::readSamples() {
-//     if (raw_dma_buffer_ == nullptr) {
-//         return ESP_ERR_NO_MEM;
-//     }
-
-//     const std::size_t buffer_bytes = chunk_size_ * channel_count_ * sizeof(int16_t);
-
-//     // Fetch hardware audio directly into internal PSRAM buffer
-//     int bytes_read = esp_get_feed_data(true, raw_dma_buffer_, static_cast<int>(buffer_bytes));
-
-//     if (bytes_read <= 0) {
-//         ESP_LOGW(TAG, "Failed to fetch audio stream from hardware");
-//         return ESP_FAIL;
-//     }
-
-//     return ESP_OK;
-// }
+ 
 esp_err_t AudioCaptureDriver::readSamples() {
     if (raw_dma_buffer_ == nullptr) {
         return ESP_ERR_NO_MEM;
@@ -129,11 +118,20 @@ esp_err_t AudioCaptureDriver::readSamples() {
 
     return ESP_OK;
 }
-std::span<const int16_t> AudioCaptureDriver::getFrameBuffer() const noexcept {
+ 
+
+std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
     if (raw_dma_buffer_ == nullptr) {
         return {};
     }
-    return std::span<const int16_t>(raw_dma_buffer_, chunk_size_ * channel_count_);
+
+    const std::size_t total_samples = chunk_size_ * channel_count_;
+    
+    // Allocate and copy data from raw_dma_buffer_ into a new std::vector
+    return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples);
 }
+
+
+
 
 } // namespace Hardware

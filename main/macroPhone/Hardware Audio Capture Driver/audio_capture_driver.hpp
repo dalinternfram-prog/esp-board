@@ -5,6 +5,7 @@
 #include <cstddef>
 #include "esp_err.h"
 
+#include<vector>
 namespace Hardware {
 
 /**
@@ -36,11 +37,12 @@ public:
     /**
      * @brief Provides a read-only view of the latest captured audio frame.
      */
-    [[nodiscard]] std::span<const int16_t> getFrameBuffer() const noexcept;
-
+  //  [[nodiscard]] std::span<const int16_t> getFrameBuffer() const noexcept;
+    [[nodiscard]]    std::vector<int16_t> getFrameBuffer() const;
     [[nodiscard]] std::size_t channelCount() const noexcept { return channel_count_; }
     [[nodiscard]] std::size_t chunkSize() const noexcept { return chunk_size_; }
 
+   
 private:
     void freeBuffer() noexcept;
 
