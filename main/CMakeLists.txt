@@ -64,12 +64,13 @@ idf_component_register(
     SRCS ${SOURCES}
     INCLUDE_DIRS ${INCLUDE_DIRS}
     REQUIRES 
-        arduino-audio-tools
+      #  arduino-audio-tools
         esp_wifi
         fatfs
         nvs_flash
         esp_event
         esp_driver_i2s
+        mbedtls
 )
 
 

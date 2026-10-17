@@ -15,6 +15,7 @@
 #include<vector>
 
 #include "Opus.hpp"
+#include "macroPhone/arguments.hpp"
 namespace Main::audio {
 
 
@@ -36,14 +37,15 @@ bool Running;
 
 
 
-void run(){
+void run(std::shared_ptr<Network::manager>s_NetworkManager){
 Running=true;
 
 
 
-std::shared_ptr<SimpleOpusEncoder> s_SimpleOpusEncoder = std::make_shared<SimpleOpusEncoder>( );
+std::shared_ptr<SimpleOpusEncoder> s_SimpleOpusEncoder = std::make_shared<SimpleOpusEncoder>( 
+    SimpleOpusEncoder::Config{macroPhone::argument::sample_rate,macroPhone::argument::channel_count,macroPhone::argument::kDefaultChunkSize});
 
-
+ 
 std::shared_ptr<Hardware::AudioCaptureDriver> s_AudioCaptureDriver = std::make_shared<Hardware::AudioCaptureDriver>( );
 
 
@@ -56,7 +58,8 @@ std::shared_ptr<Hardware::AudioCaptureDriver> s_AudioCaptureDriver = std::make_s
             
             std::vector<int16_t> audio = s_AudioCaptureDriver->getFrameBuffer();
 
-  
+    std::vector<uint8_t> compressed_ = s_SimpleOpusEncoder->encode(audio);
+
  
         } 
         

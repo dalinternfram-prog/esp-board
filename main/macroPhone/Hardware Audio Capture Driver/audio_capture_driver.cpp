@@ -20,27 +20,6 @@ AudioCaptureDriver::AudioCaptureDriver() {
    // channel_count_ = static_cast<std::size_t>(esp_get_feed_channel());
 
  
-
-
-// i2s_chan_info_t chan_info{};
-// if (i2s_channel_get_info(bsp_i2s_get_rx_handle(), &chan_info) == ESP_OK) {
-//     if (chan_info.mode == I2S_COMM_MODE_STD && chan_info.mode_cfg != nullptr) {
-//         auto* std_cfg = static_cast<const i2s_std_config_t*>(chan_info.mode_cfg);
-        
-//         // MONO slot mode = 1 channel, STEREO slot mode = 2 channels
-//         channel_count_ = (std_cfg->slot_cfg.slot_mode == I2S_SLOT_MODE_MONO) ? 1 : 2;
-//     } else {
-        
-//        ESP_LOGW("++++++++++", "----  ==  --- default channel count = 2");
-//         channel_count_ = 2; // Default hardware fallback for standard stereo
-        
-//     }
-// } else {
- 
-//     channel_count_ = 2;
-//        ESP_LOGW("++++++++++", "default channel count = 2");
-// }
-
 channel_count_=macroPhone::argument::channel_count;
 chunk_size_=macroPhone::argument::kDefaultChunkSize;
 
