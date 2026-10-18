@@ -70,7 +70,9 @@ idf_component_register(
         nvs_flash
         esp_event
         esp_driver_i2s
-        mbedtls
+        mbedtls#encryption
+        app_update# this is for firmwire switch
+        esp_http_server # for wifi privision
 )
 
 

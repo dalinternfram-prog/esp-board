@@ -1,6 +1,19 @@
-# Name,     Type, SubType, Offset,   Size, Flags
-# Note: if you have increased the bootloader size, make sure to update the offsets to avoid overlap,,,,
-nvs,        data,   nvs,      0x9000,       0x6000,
-factory,    0,      0,        0x10000,      3M,
-flash_test, data,   fat,      ,             528K,
-model,      data,   spiffs,   ,             5900K,
+# Name,       Type, SubType, Offset,  Size,   Flags
+# ----------------------------------------------------------------------------------------------------
+# NVS Partition: Stores Wi-Fi credentials, system settings, and secure AES encryption keys (Non-Volatile Storage)
+nvs,       data, nvs,     ,        0x4000, 
+
+# OTA Data Partition: Acts as the "traffic cop" recording which firmware slot (A or B) is currently active
+boot_meta,    data, ota,     ,        0x2000, 
+
+# PHY Init Partition: Stores hardware radio calibration data for Wi-Fi and Bluetooth performance
+phy_init,     data, phy,     ,        0x1000, 
+
+# Firmware Slot A (4MB): Primary code storage slot where your application runs or receives updates
+firmware_a,   app,  ota_0,   ,        4M,     
+
+# Firmware Slot B (4MB): Secondary code storage slot used for safe background OTA network updates
+firmware_b,   app,  ota_1,   ,        4M,     
+
+# File Storage Partition (4MB): Dedicated internal storage (using SPIFFS/LittleFS) for files, configs, and logs
+my_files,     data, spiffs,  ,        4M,
