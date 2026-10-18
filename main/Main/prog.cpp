@@ -18,7 +18,11 @@
 #include "wifi_client.hpp"
 #include "wifi_provision.hpp"
 #include "try-wifi.hpp"
+ 
 
+/*
+add comment to where you change and preserve every comment for future review
+*/
 constexpr uint32_t conv_id = 2222222;
 const char* host ="10.165.11.156";
  const char* port="8080";

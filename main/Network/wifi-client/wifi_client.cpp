@@ -1,232 +1,3 @@
-// // #include "wifi_client.hpp"    // Include corresponding header file definitions
-// // #include "esp_log.h"          // Include ESP-IDF logging library header
-// // #include <cstring>            // Include standard C string manipulation library header
-// // #include "freertos/FreeRTOS.h" // Include FreeRTOS base header for task delays
-// // #include "freertos/task.h"       // Include FreeRTOS task management header
-
-// // WifiClient::WifiClient() {}   // Constructor definition (no complex state tracking needed here)
-
-// // WifiClient::~WifiClient() {   // Destructor definition for clean lifecycle exit
-// //     disconnect();             // Ensure disconnection occurs on destruction
-// // }                               // End of destructor definition
-
-// // bool WifiClient::connect(const std::string& ssid, const std::string& password) {
-// //     if (ssid.empty()) {       // Check if provided SSID string is empty
-// //         ESP_LOGE(TAG, "Cannot connect: SSID is empty."); // Log error message
-// //         return false;         // Return failure status boolean
-// //     }                           // End of SSID check block
-
-// //     wifi_config_t wifi_config = {}; // Initialize Wi-Fi configuration structure with zeroes
-// //     std::strncpy((char*)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid)); // Copy SSID safely
-// //     std::strncpy((char*)wifi_config.sta.password, password.c_str(), sizeof(wifi_config.sta.password)); // Copy Password safely
-
-// //     esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA); // Set Wi-Fi operating mode to Station (STA)
-// //     if (ret != ESP_OK) {      // Check if setting mode failed
-// //         ESP_LOGE(TAG, "Failed to set Wi-Fi STA mode: %s", esp_err_to_name(ret)); // Log error details
-// //         return false;         // Return failure status boolean
-// //     }                           // End of mode error check block
-
-// //     ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_config); // Apply SSID and password configuration to interface
-// //     if (ret != ESP_OK) {      // Check if configuration assignment failed
-// //         ESP_LOGE(TAG, "Failed to set Wi-Fi configuration: %s", esp_err_to_name(ret)); // Log error details
-// //         return false;         // Return failure status boolean
-// //     }                           // End of config error check block
-
-// //     ESP_LOGI(TAG, "Triggering connection to SSID: [%s]...", ssid.c_str()); // Log connection progress
-// //     ret = esp_wifi_connect();   // Call ESP-IDF driver API to initiate connection sequence
-// //     if (ret != ESP_OK) {        // Check if connection trigger failed
-// //         ESP_LOGE(TAG, "Failed to trigger esp_wifi_connect: %s", esp_err_to_name(ret)); // Log error details
-// //         return false;           // Return failure status boolean
-// //     }                           // End of connect trigger error check block
-
-// //     return true;                // Return success boolean indicating connection command was accepted
-// // }                               // End of connect method
-
-// // void WifiClient::disconnect() { // Method to terminate current Wi-Fi connection
-// //     esp_wifi_disconnect();    // Call ESP-IDF driver disconnection API
-// //     ESP_LOGI(TAG, "WifiClient disconnected."); // Log disconnection notice message
-// // }                               // End of disconnect method
-
-// // // bool WifiClient::isConnected() const { // Method to query active connection status
-// // //     wifi_ap_record_t ap_info;   // Initialize access point information record structure
-// // //     // Check if the station successfully fetched current connected AP info (indicates active association)
-// // //     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-// // //         return true;            // Return true if connected to an AP
-// // //     }                           // End of AP info check block
-// // //     return false;               // Return false if not connected
-// // // }                               // End of isConnected method
-
-
-
-// // bool WifiClient::isConnected() const {
-// //     // 1. Check if we have a default STA network interface
-// //     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-// //     if (!netif) return false;
-
-// //     // 2. Fetch network interface IP info
-// //     esp_netif_ip_info_t ip_info;
-// //     if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-// //         // If the IP address is not 0.0.0.0, we are fully connected and have an IP!
-// //         if (ip_info.ip.addr != 0) {
-// //             return true;
-// //         }
-// //     }
-    
-// //     return false;
-// // }
-
-
-
-
-
-
-// #include "wifi_client.hpp"    // Include corresponding header file definitions
-// #include "esp_log.h"          // Include ESP-IDF logging library header
-// #include <cstring>            // Include standard C string manipulation library header
-// #include "freertos/FreeRTOS.h" // Include FreeRTOS base header for task delays
-// #include "freertos/task.h"       // Include FreeRTOS task management header
-
-// // [NEW] Static C-style event bridge function implementation
-// void WifiClient::wifi_event_bridge(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-//     auto* client = static_cast<WifiClient*>(arg);
-//     if (client) {
-//         client->handleSystemEvent(event_base, event_id, event_data);
-//     }
-// }
-
-// WifiClient::WifiClient() {    // Constructor definition (no complex state tracking needed here)
-//     // [NEW] Register system event listeners to update internal state mailbox flags passively
-//     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiClient::wifi_event_bridge, this, nullptr);
-//     esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiClient::wifi_event_bridge, this, nullptr);
-// }
-
-// WifiClient::~WifiClient() {   // Destructor definition for clean lifecycle exit
-//     // [NEW] Unregister event handlers before tearing down object
-//     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiClient::wifi_event_bridge);
-//     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiClient::wifi_event_bridge);
-//     disconnect();             // Ensure disconnection occurs on destruction
-// }                               // End of destructor definition
-
-// // [NEW] Passive event handler method storing system events into internal state flags
-// void WifiClient::handleSystemEvent(esp_event_base_t event_base, int32_t event_id, void* event_data) {
-//     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-//         connected_flag = true;
-//         auth_failed_flag = false;
-//         last_disconnect_reason = 0;
-//         ESP_LOGI(TAG, "Wi-Fi client successfully obtained IP address.");
-//     } 
-//     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-//         connected_flag = false;
-//         auto* event = static_cast<wifi_event_sta_disconnected_t*>(event_data);
-//         if (event) {
-//             last_disconnect_reason = event->reason;
-//             // Check for specific authentication/password failure codes
-//             if (event->reason == WIFI_REASON_AUTH_FAIL || 
-//                 event->reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT ||
-//                 event->reason == WIFI_REASON_HANDSHAKE_TIMEOUT) {
-//                 auth_failed_flag = true;
-//                 ESP_LOGW(TAG, "Wi-Fi authentication failed (Reason: %d). Incorrect password?", event->reason);
-//             } else {
-//                 ESP_LOGW(TAG, "Wi-Fi disconnected with reason code: %d", event->reason);
-//             }
-//         }
-//     }
-// }
-
-// bool WifiClient::connect(const std::string& ssid, const std::string& password) {
-//     if (ssid.empty()) {       // Check if provided SSID string is empty
-//         ESP_LOGE(TAG, "Cannot connect: SSID is empty."); // Log error message
-//         return false;         // Return failure status boolean
-//     }                           // End of SSID check block
-
-//     // [NEW] Reset state flags prior to new connection attempt
-//     auth_failed_flag = false;
-//     connected_flag = false;
-//     last_disconnect_reason = 0;
-
-//     wifi_config_t wifi_config = {}; // Initialize Wi-Fi configuration structure with zeroes
-//     std::strncpy((char*)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid)); // Copy SSID safely
-//     std::strncpy((char*)wifi_config.sta.password, password.c_str(), sizeof(wifi_config.sta.password)); // Copy Password safely
-
-//     esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA); // Set Wi-Fi operating mode to Station (STA)
-//     if (ret != ESP_OK) {      // Check if setting mode failed
-//         ESP_LOGE(TAG, "Failed to set Wi-Fi STA mode: %s", esp_err_to_name(ret)); // Log error details
-//         return false;         // Return failure status boolean
-//     }                           // End of mode error check block
-
-//     ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_config); // Apply SSID and password configuration to interface
-//     if (ret != ESP_OK) {      // Check if configuration assignment failed
-//         ESP_LOGE(TAG, "Failed to set Wi-Fi configuration: %s", esp_err_to_name(ret)); // Log error details
-//         return false;         // Return failure status boolean
-//     }                           // End of config error check block
-
-//     ESP_LOGI(TAG, "Triggering connection to SSID: [%s]...", ssid.c_str()); // Log connection progress
-//     ret = esp_wifi_connect();   // Call ESP-IDF driver API to initiate connection sequence
-//     if (ret != ESP_OK) {        // Check if connection trigger failed
-//         ESP_LOGE(TAG, "Failed to trigger esp_wifi_connect: %s", esp_err_to_name(ret)); // Log error details
-//         return false;           // Return failure status boolean
-//     }                           // End of connect trigger error check block
-
-//     return true;                // Return success boolean indicating connection command was accepted
-// }                               // End of connect method
-
-// void WifiClient::disconnect() { // Method to terminate current Wi-Fi connection
-//     esp_wifi_disconnect();    // Call ESP-IDF driver disconnection API
-//     connected_flag = false;   // [NEW] Clear connected status flag
-//     ESP_LOGI(TAG, "WifiClient disconnected."); // Log disconnection notice message
-// }                               // End of disconnect method
-
-// // bool WifiClient::isConnected() const { // Method to query active connection status
-// //     wifi_ap_record_t ap_info;   // Initialize access point information record structure
-// //     // Check if the station successfully fetched current connected AP info (indicates active association)
-// //     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-// //         return true;            // Return true if connected to an AP
-// //     }                           // End of AP info check block
-// //     return false;               // Return false if not connected
-// // }                               // End of isConnected method
-
-// bool WifiClient::isConnected() const {
-//     // [NEW] Use cached event flag primary check combined with netif verification
-//     if (connected_flag) {
-//         return true;
-//     }
-
-//     // 1. Check if we have a default STA network interface
-//     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-//     if (!netif) return false;
-
-//     // 2. Fetch network interface IP info
-//     esp_netif_ip_info_t ip_info;
-//     if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-//         // If the IP address is not 0.0.0.0, we are fully connected and have an IP!
-//         if (ip_info.ip.addr != 0) {
-//             return true;
-//         }
-//     }
-    
-//     return false;
-// }
-
-// // [NEW] Query last disconnect reason code stored passively by system event handler
-// int WifiClient::getLastError() const {
-//     return last_disconnect_reason;
-// }
-
-// // [NEW] Fast-fail boolean check for authentication/password rejection
-// bool WifiClient::hasAuthenticationFailed() const {
-//     return auth_failed_flag;
-// }
-
-
-
-
-
-
-
-
-
-
-
 #include "wifi_client.hpp"    // Include corresponding header file definitions
 #include "esp_log.h"          // Include ESP-IDF logging library header
 #include <cstring>            // Include standard C string manipulation library header
@@ -242,30 +13,34 @@ void WifiClient::wifi_event_bridge(void* arg, esp_event_base_t event_base, int32
 }
 
 WifiClient::WifiClient() {    // Constructor definition (no complex state tracking needed here)
-    // [NEW] Register system event listeners to update internal state mailbox flags passively
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiClient::wifi_event_bridge, this, nullptr);
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiClient::wifi_event_bridge, this, nullptr);
+    // [NEW] Register system event listeners, capturing instance handles for safe unregistration
+    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiClient::wifi_event_bridge, this, &wifi_event_instance);
+    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiClient::wifi_event_bridge, this, &ip_event_instance);
 }
 
 WifiClient::~WifiClient() {   // Destructor definition for clean lifecycle exit
-    // [NEW] Unregister event handlers before tearing down object
-    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiClient::wifi_event_bridge);
-    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiClient::wifi_event_bridge);
+    // [NEW] Unregister using exact instance handles to prevent memory leaks and API mismatch errors
+    if (wifi_event_instance) {
+        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_instance);
+    }
+    if (ip_event_instance) {
+        esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_event_instance);
+    }
     disconnect();             // Ensure disconnection occurs on destruction
 }                             // End of destructor definition
 
 // [NEW] Passive event handler method storing system events into internal state flags
 void WifiClient::handleSystemEvent(esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        connected_flag = true;
-        disconnect_reason = 0; // Clear error on successful connection
+        connected_flag.store(true);
+        disconnect_reason.store(0); // Clear error on successful connection
         ESP_LOGI(TAG, "Wi-Fi client successfully obtained IP address.");
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        connected_flag = false;
+        connected_flag.store(false);
         auto* event = static_cast<wifi_event_sta_disconnected_t*>(event_data);
         if (event) {
-            disconnect_reason = event->reason; // Store the exact raw reason code provided by the driver
+            disconnect_reason.store(event->reason); // Store the exact raw reason code provided by the driver
             ESP_LOGW(TAG, "Wi-Fi disconnected. Raw reason code: %d", event->reason);
         }
     }
@@ -278,8 +53,8 @@ bool WifiClient::connect(const std::string& ssid, const std::string& password) {
     }                         // End of SSID check block
 
     // [NEW] Clear out stale history and reset state from previous attempts before starting fresh
-    disconnect_reason = 0;
-    connected_flag = false;
+    disconnect_reason.store(0);
+    connected_flag.store(false);
 
     wifi_config_t wifi_config = {}; // Initialize Wi-Fi configuration structure with zeroes
     std::strncpy((char*)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid)); // Copy SSID safely
@@ -309,7 +84,7 @@ bool WifiClient::connect(const std::string& ssid, const std::string& password) {
 
 void WifiClient::disconnect() { // Method to terminate current Wi-Fi connection
     esp_wifi_disconnect();    // Call ESP-IDF driver disconnection API
-    connected_flag = false;   // [NEW] Clear connected status flag on explicit disconnect
+    connected_flag.store(false); // [NEW] Clear connected status flag on explicit disconnect
     ESP_LOGI(TAG, "WifiClient disconnected."); // Log disconnection notice message
 }                             // End of disconnect method
 
@@ -323,8 +98,8 @@ void WifiClient::disconnect() { // Method to terminate current Wi-Fi connection
 // }                             // End of isConnected method
 
 bool WifiClient::isConnected() const {
-    // [NEW] Check cached event flag first for speed
-    if (connected_flag) {
+    // [NEW] Check atomic cached event flag first for thread-safe speed
+    if (connected_flag.load()) {
         return true;
     }
 
