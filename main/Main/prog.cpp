@@ -19,7 +19,16 @@
 #include "wifi_provision.hpp"
 #include "try-wifi.hpp"
  
+//**
+// 
+// idf.py monitor
+// idf.py fullclean
+// idf.py erase-flash flash
 
+
+
+
+//  */
 /*
 add comment to where you change and preserve every comment for future review
 */

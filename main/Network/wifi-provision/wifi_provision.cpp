@@ -304,7 +304,7 @@ bool WifiProvision::start() { // Method to start SoftAP and provisioning web ser
     config.recv_wait_timeout = 5;
     config.send_wait_timeout = 5;
 
-    
+
     if (httpd_start(&m_server_handle, &config) == ESP_OK) { // Attempt to start HTTP web server instance
         httpd_uri_t root_uri = { // Create URI handler structure for root GET request
             .uri      = "/",    // Target root path endpoint string
@@ -359,6 +359,12 @@ bool WifiProvision::hasCredentials() const { // Method to check if credentials h
     std::lock_guard<std::mutex> lock(m_mutex); // Lock mutex to ensure thread safety across tasks
     return m_credentials_received;             // Return boolean flag indicating if data arrived
 }                               // End of hasCredentials method
+    void WifiProvision::clearCredentials(){
+    std::lock_guard<std::mutex> lock(m_mutex); // Lock mutex to ensure thread safety across tasks
+      m_credentials_received=false;             // Return boolean flag indicating if data arrived
+    }
+
+
 
 std::string WifiProvision::getSsid() const {    // Method to retrieve stored SSID string
     std::lock_guard<std::mutex> lock(m_mutex); // Lock mutex for thread-safe read access

@@ -58,6 +58,7 @@ public:                      // Public access specifier for external component i
     bool stop();             // Stop SoftAP mode and HTTP web server resources
     
     bool hasCredentials() const; // Check if user has submitted and stored new credentials
+    void clearCredentials();
     std::string getSsid() const;     // Retrieve the stored SSID string value
     std::string getPassword() const; // Retrieve the stored Password string value
 
