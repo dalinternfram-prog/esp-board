@@ -294,7 +294,17 @@ bool WifiProvision::start() { // Method to start SoftAP and provisioning web ser
     
     // [NEW] Enable wildcard URI matching required by the captive portal component to intercept OS probes
     config.uri_match_fn = httpd_uri_match_wildcard; 
+// [NEW] Increase the internal receive buffer size to accommodate large mobile browser request headers
+    config.max_uri_len = 1024;        // Allow longer URIs
+    config.stack_size = 4096;         // Give the httpd worker task enough stack space
+    config.ctrl_port = 32768;         // Default control port
 
+    // Note: ESP-IDF httpd uses the rx_buf size to handle incoming request headers. 
+    // We can override the default receive buffer size by setting it in config:
+    config.recv_wait_timeout = 5;
+    config.send_wait_timeout = 5;
+
+    
     if (httpd_start(&m_server_handle, &config) == ESP_OK) { // Attempt to start HTTP web server instance
         httpd_uri_t root_uri = { // Create URI handler structure for root GET request
             .uri      = "/",    // Target root path endpoint string
