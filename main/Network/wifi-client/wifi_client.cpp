@@ -35,6 +35,18 @@ void WifiClient::handleSystemEvent(esp_event_base_t event_base, int32_t event_id
         connected_flag.store(true);
         disconnect_reason.store(0); // Clear error on successful connection
         ESP_LOGI(TAG, "Wi-Fi client successfully obtained IP address.");
+
+ // Check if we are currently in APSTA mode before switching back
+        wifi_mode_t current_mode;
+        if (esp_wifi_get_mode(&current_mode) == ESP_OK && current_mode == WIFI_MODE_APSTA) {
+            esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA);
+            if (ret == ESP_OK) {
+                ESP_LOGI(TAG, "Switched back to pure STA mode. Provisioning AP stopped.");
+            } else {
+                ESP_LOGE(TAG, "Failed to switch back to STA mode: %s", esp_err_to_name(ret));
+            }
+        }
+
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         connected_flag.store(false);
@@ -55,16 +67,39 @@ bool WifiClient::connect(const std::string& ssid, const std::string& password) {
     // [NEW] Clear out stale history and reset state from previous attempts before starting fresh
     disconnect_reason.store(0);
     connected_flag.store(false);
+    
+    // [NEW] Ensure any lingering connection attempt is forcefully cleared out first!
+    esp_wifi_disconnect();
+
 
     wifi_config_t wifi_config = {}; // Initialize Wi-Fi configuration structure with zeroes
     std::strncpy((char*)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid)); // Copy SSID safely
     std::strncpy((char*)wifi_config.sta.password, password.c_str(), sizeof(wifi_config.sta.password)); // Copy Password safely
 
-    esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA); // Set Wi-Fi operating mode to Station (STA)
-    if (ret != ESP_OK) {      // Check if setting mode failed
-        ESP_LOGE(TAG, "Failed to set Wi-Fi STA mode: %s", esp_err_to_name(ret)); // Log error details
-        return false;         // Return failure status boolean
-    }                         // End of mode error check block
+
+esp_err_t ret;
+// Check current mode first to avoid redundant driver re-inits
+    wifi_mode_t current_mode;
+    if (esp_wifi_get_mode(&current_mode) == ESP_OK) {
+        if (current_mode != WIFI_MODE_APSTA) {
+              ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to set Wi-Fi APSTA mode: %s", esp_err_to_name(ret));
+                return false;
+            }
+            ESP_LOGI(TAG, "Switched to APSTA mode for credential testing.");
+        }
+    }
+
+
+
+
+
+    // esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA); // Set Wi-Fi operating mode to Station (STA)
+    // if (ret != ESP_OK) {      // Check if setting mode failed
+    //     ESP_LOGE(TAG, "Failed to set Wi-Fi STA mode: %s", esp_err_to_name(ret)); // Log error details
+    //     return false;         // Return failure status boolean
+    // }                         // End of mode error check block
 
     ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_config); // Apply SSID and password configuration to interface
     if (ret != ESP_OK) {      // Check if configuration assignment failed
