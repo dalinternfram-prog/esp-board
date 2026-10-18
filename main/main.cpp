@@ -263,7 +263,9 @@
 #include "button_driver.h" 
 #include "wifi_manager.h" 
 #include "macroPhone/arguments.hpp"
-
+#include "wifi_init.hpp"
+#include "nvs_manager.hpp"
+#include <memory>
 // CHANGED: Added const to fix "ISO C++ forbids converting a string constant to 'char*'" warning
 static const char *TAG = "app main";
 
@@ -501,7 +503,14 @@ extern "C" void app_main()
 
             ESP_LOGI("++++++++++++","success Search_mp3_Music" );
 
+std::shared_ptr<WifiInit> wifi_init_class=std::make_shared<WifiInit>();
+std::shared_ptr<NvsManager> NvsManager_class=std::make_shared<NvsManager>();
 
- app_run_loop();
+NvsManager_class->init();
+wifi_init_class->initialize();
+
+
+
+ //app_run_loop();
 
 }
