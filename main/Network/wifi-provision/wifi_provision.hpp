@@ -32,4 +32,12 @@ private:                      // Private access specifier for internal helper va
     static esp_err_t handle_save_post(httpd_req_t *req); // Static HTTP POST handler parsing submitted form fields
 
     static constexpr const char* TAG = "WifiProvision"; // Logging tag constant string for console outputs
+
+ 
+private:
+    static void dns_server_task(void *pvParameters);
+    TaskHandle_t m_dns_task_handle = nullptr;
+    int m_dns_socket = -1;
 };                            // End of WifiProvision class declaration
+
+

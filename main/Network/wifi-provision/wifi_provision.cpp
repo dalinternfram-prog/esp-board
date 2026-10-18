@@ -15,6 +15,76 @@ WifiProvision::~WifiProvision() { // Destructor definition for clean lifecycle e
     stop();                   // Ensure provisioning server and AP are shut down on destruction
 }                               // End of destructor definition
 
+
+// DNS Server Task (UDP Port 53) - Intercepts all DNS requests and points them to 192.168.4.1
+void WifiProvision::dns_server_task(void *pvParameters) {
+    char rx_buffer[512];
+    char tx_buffer[512];
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(53);
+    dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0) {
+        ESP_LOGE("DNS", "Unable to create DNS socket: errno %d", errno);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    if (err < 0) {
+        ESP_LOGE("DNS", "Socket unable to bind: errno %d", errno);
+        close(sock);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI("DNS", "Captive Portal DNS Server running on port 53");
+
+    while (true) {
+        struct sockaddr_in source_addr;
+        socklen_t socklen = sizeof(source_addr);
+        int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
+
+        if (len < 0) break;
+
+        // Simple DNS hijacking response builder
+        if (len > 12) {
+            std::memcpy(tx_buffer, rx_buffer, len);
+            tx_buffer[2] = 0x81; // Response flags
+            tx_buffer[3] = 0x80;
+            tx_buffer[6] = 0x00; tx_buffer[7] = 0x01; // Answer count = 1
+            tx_buffer[8] = 0x00; tx_buffer[9] = 0x00;
+            tx_buffer[10] = 0x00; tx_buffer[11] = 0x00;
+
+            int reply_len = len;
+            // Append DNS answer pointing to 192.168.4.1
+            const unsigned char res_data[] = {
+                0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 
+                0x00, 0x3c, 0x00, 0x04, 192, 168, 4, 1
+            };
+            if (reply_len + sizeof(res_data) < sizeof(tx_buffer)) {
+                std::memcpy(tx_buffer + reply_len, res_data, sizeof(res_data));
+                reply_len += sizeof(res_data);
+                sendto(sock, tx_buffer, reply_len, 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
+            }
+        }
+    }
+    close(sock);
+    vTaskDelete(NULL);
+}
+
+// Catch-all handler to redirect any unrecognized URL to the root configuration page
+esp_err_t handle_redirect_get(httpd_req_t *req) {
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_send(req, nullptr, 0);
+    return ESP_OK;
+}
+
+
+
 bool WifiProvision::start() { // Method to start SoftAP and provisioning web server
     if (m_is_running) return true; // Return true immediately if already running
 
@@ -34,7 +104,7 @@ bool WifiProvision::start() { // Method to start SoftAP and provisioning web ser
     wifi_config.ap.authmode = WIFI_AUTH_OPEN; // Set authentication mode to open (no password for config AP)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP)); // Configure Wi-Fi driver operating mode to Access Point
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config)); // Apply AP configuration settings to driver
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config)); // Apply AP configuration settings to driver
     ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi driver execution in AP mode
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG(); // Load default HTTP server configuration settings struct
