@@ -7,7 +7,7 @@
 #include <algorithm>          // Include standard C++ algorithm library header
 #include "captive_portal.h"   // [NEW] Include external open-source captive portal component header for automatic OS probe redirection
 
-// [NEW] Lightweight helper function to URL-decode incoming form strings (converts '+' to space and handles hex encoding)
+//  Lightweight helper function to URL-decode incoming form strings (converts '+' to space and handles hex encoding)
 static  std::string url_decode(const std::string& str) {
     std::string result;
     result.reserve(str.length());
