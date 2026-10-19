@@ -82,7 +82,7 @@ esp_err_t ret;
  
  
 
-wifi::switch_wifi_mode(wifi_mode_t::WIFI_MODE_STA,&wifi_config);
+    wifi::switch_wifi_mode(wifi_mode_t::WIFI_MODE_STA,&wifi_config);
     esp_wifi_set_ps(WIFI_PS_NONE);
                       // End of config error check block
 

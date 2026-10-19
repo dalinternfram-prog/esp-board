@@ -7,6 +7,7 @@
 #include "freertos/event_groups.h"
 #include <string.h>
 
+namespace wifi {
 static const char *TAG = "WIFI_MANAGER";
 
 #define WIFI_CONNECTED_BIT BIT0
@@ -128,3 +129,49 @@ esp_err_t wifi_state::register_handlers(void) {
     ESP_LOGI(TAG, "Wi-Fi and IP event handlers successfully registered.");
     return ESP_OK;
 }
+
+
+
+}
+
+
+// bool WifiClient::isConnected() const {
+//     // [NEW] Check atomic cached event flag first for thread-safe speed
+//     if (connected_flag.load()) {
+//         return true;
+//     }
+
+//     // 1. Check if we have a default STA network interface
+//     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+//     if (!netif) return false;
+
+//     // 2. Fetch network interface IP info
+//     esp_netif_ip_info_t ip_info;
+//     if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+//         // If the IP address is not 0.0.0.0, we are fully connected and have an IP!
+//         if (ip_info.ip.addr != 0) {
+//             return true;
+//         }
+//     }
+    
+//     return false;
+// }
+
+
+
+// WifiClient::WifiClient() {    // Constructor definition (no complex state tracking needed here)
+//     // [NEW] Register system event listeners, capturing instance handles for safe unregistration
+//     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &WifiClient::wifi_event_bridge, this, &wifi_event_instance);
+//     esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiClient::wifi_event_bridge, this, &ip_event_instance);
+// }
+
+// WifiClient::~WifiClient() {   // Destructor definition for clean lifecycle exit
+//     // [NEW] Unregister using exact instance handles to prevent memory leaks and API mismatch errors
+//     if (wifi_event_instance) {
+//         esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_instance);
+//     }
+//     if (ip_event_instance) {
+//         esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_event_instance);
+//     }
+//     disconnect();             // Ensure disconnection occurs on destruction
+// }                             // End of destructor definition

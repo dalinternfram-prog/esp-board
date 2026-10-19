@@ -59,12 +59,7 @@ bool WifiProvision::start() { // Method to start SoftAP and provisioning web ser
     wifi_config.ap.max_connection = 4; // Set maximum simultaneous client connection limit to 4
     wifi_config.ap.authmode = WIFI_AUTH_OPEN; // Set authentication mode to open (no password for config AP)
 
-    // ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP)); // Configure Wi-Fi driver operating mode to Access Point
-    // ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config)); // Apply AP configuration settings to driver
-    // ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi driver execution in AP mode
-
-
- 
+  
 wifi::switch_wifi_mode(wifi_mode_t::WIFI_MODE_AP,&wifi_config); 
 
 
@@ -134,6 +129,8 @@ bool WifiProvision::stop() {    // Method to stop SoftAP mode and web server res
     ESP_LOGI(TAG, "WifiProvision stopped successfully."); // Log success message
     return true;                // Return success status code
 }                               // End of stop method
+
+
 
 bool WifiProvision::hasCredentials() const { // Method to check if credentials have been received asynchronously
     std::lock_guard<std::mutex> lock(m_mutex); // Lock mutex to ensure thread safety across tasks

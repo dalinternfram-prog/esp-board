@@ -3,6 +3,7 @@
 #include "esp_err.h"
 #include "esp_event.h"
 #include <atomic>
+namespace wifi {
 
 // Define public or external state representation if needed, 
 // or use the class methods to query status.
@@ -70,3 +71,9 @@ public:
 
 
 };
+
+
+
+
+
+} ;

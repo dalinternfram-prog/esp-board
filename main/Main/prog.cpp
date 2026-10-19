@@ -51,13 +51,13 @@ void app_run_loop(
    //* scan nvs to find the candicate;
 
 
-     std::shared_ptr<WifiClient> WifiClient_class=std::make_shared<WifiClient>();
 
+     std::shared_ptr<wifi_state> wifi_state_class=std::make_shared<wifi_state>();
      std::shared_ptr<WifiProvision> WifiProvision_class=std::make_shared<WifiProvision>();
-
+wifi_state_class->register_handlers();
 
      // Package parameters for the background task
-    auto* params = new wifi::try_connect::WifiMonitorParams{WifiClient_class, nvsManager, WifiProvision_class};
+    auto* params = new wifi::try_connect::WifiMonitorParams{wifi_state_class, nvsManager, WifiProvision_class};
 
     // Spawn the background watchdog task and forget about it
     xTaskCreate(
