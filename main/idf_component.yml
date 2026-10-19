@@ -5,3 +5,7 @@ dependencies:
   espressif/led_strip: ^3.0.1~1
   bblanchon/ArduinoJson: ^7.0.0
   nordesems/esp-captive-portal: '>=1.3.0' 
+  
+  
+ 
+  espressif/cjson: "^1.7.19"

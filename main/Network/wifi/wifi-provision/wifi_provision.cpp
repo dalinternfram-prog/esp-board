@@ -6,6 +6,8 @@
 #include <cstring>            // Include standard C string manipulation library header
 #include <algorithm>          // Include standard C++ algorithm library header
 #include "captive_portal.h"   // [NEW] Include external open-source captive portal component header for automatic OS probe redirection
+#include "wifi-init/wifi_init.hpp"
+#include "wifi/wifi-init/wifi_init.hpp"
 #include "wifi_init.hpp"
 //  Lightweight helper function to URL-decode incoming form strings (converts '+' to space and handles hex encoding)
 static  std::string url_decode(const std::string& str) {

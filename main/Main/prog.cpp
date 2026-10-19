@@ -16,8 +16,7 @@
 #include "file_manager.hpp"
 #include "firmware_switch.hpp"
 #include "wifi_client.hpp"
-#include "wifi_provision.hpp"
-#include "try-wifi.hpp"
+#include "wifi_provision.hpp" 
  
 //**
 // 
@@ -52,33 +51,33 @@ void app_run_loop(
 
 
 
-     std::shared_ptr<wifi_state> wifi_state_class=std::make_shared<wifi_state>();
-     std::shared_ptr<WifiProvision> WifiProvision_class=std::make_shared<WifiProvision>();
-wifi_state_class->register_handlers();
+//      std::shared_ptr<wifi_state> wifi_state_class=std::make_shared<wifi_state>();
+//      std::shared_ptr<WifiProvision> WifiProvision_class=std::make_shared<WifiProvision>();
+// wifi_state_class->register_handlers();
 
      // Package parameters for the background task
-    auto* params = new wifi::try_connect::WifiMonitorParams{wifi_state_class, nvsManager, WifiProvision_class};
+   // auto* params = new wifi::try_connect::WifiMonitorParams{wifi_state_class, nvsManager, WifiProvision_class};
 
     // Spawn the background watchdog task and forget about it
-    xTaskCreate(
-        wifi::try_connect::wifi_background_monitor_task, // Task function pointer
-        "wifi_monitor_task",          // Task name
-        4096,                         // Stack size
-        params,                       // Parameters pointer
-        2,                            // Task priority
-        NULL
-    );
+//     xTaskCreate(
+//         wifi::try_connect::wifi_background_monitor_task, // Task function pointer
+//         "wifi_monitor_task",          // Task name
+//         4096,                         // Stack size
+//         params,                       // Parameters pointer
+//         2,                            // Task priority
+//         NULL
+//     );
 
-    // Main Application Runtime Loop (Starts instantly and just checks the bool when needed)
-    ESP_LOGI(TAG, "Entering main application loop...");
-
-
+//     // Main Application Runtime Loop (Starts instantly and just checks the bool when needed)
+//     ESP_LOGI(TAG, "Entering main application loop...");
 
 
-while(1){
 
-            vTaskDelay(pdMS_TO_TICKS(20020));
-}
+
+// while(1){
+
+//             vTaskDelay(pdMS_TO_TICKS(20020));
+// }
 
 // std::shared_ptr<Network::manager> s_NetworkManager = std::make_shared<Network::manager>(conv_id);
  
