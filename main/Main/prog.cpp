@@ -17,7 +17,7 @@
 #include "firmware_switch.hpp"
 #include "wifi_client.hpp"
 #include "wifi_provision.hpp" 
- 
+#include "wifi-manager/WiFiManager.hpp"
 //**
 // 
 // idf.py monitor
@@ -35,8 +35,7 @@ constexpr uint32_t conv_id = 2222222;
 const char* host ="10.165.11.156";
  const char* port="8080";
  const char* ssid="Dalintern device";
-  const char* password= "cykcykcyk"; 
-static const char* TAG = "AppLoop";
+  const char* password= "cykcykcyk";  
 
  
 
@@ -50,6 +49,7 @@ void app_run_loop(
    //* scan nvs to find the candicate;
 
 
+   WiFiManager::getInstance().begin(); 
 
 //      std::shared_ptr<wifi_state> wifi_state_class=std::make_shared<wifi_state>();
 //      std::shared_ptr<WifiProvision> WifiProvision_class=std::make_shared<WifiProvision>();
@@ -74,10 +74,10 @@ void app_run_loop(
 
 
 
-// while(1){
+while(1){
 
-//             vTaskDelay(pdMS_TO_TICKS(20020));
-// }
+            vTaskDelay(pdMS_TO_TICKS(20020));
+}
 
 // std::shared_ptr<Network::manager> s_NetworkManager = std::make_shared<Network::manager>(conv_id);
  

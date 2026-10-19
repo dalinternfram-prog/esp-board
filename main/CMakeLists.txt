@@ -73,6 +73,8 @@ idf_component_register(
         mbedtls#encryption
         app_update# this is for firmwire switch
         esp_http_server # for wifi privision
+        esp_wifi_manager
+        esp_bus
 )
 
 
