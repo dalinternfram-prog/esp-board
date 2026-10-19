@@ -1,37 +1,41 @@
-// #pragma once
-// #include "KcpClient.hpp"
-// #include <cstdint>
-// #include <memory>
-// #include <type_traits>
-// #include <vector>
-// #include "./wifi_driver/wifi_manager.h"
-// #include "esp_log.h"
+#pragma once
+#include "KcpClient.hpp"
+#include <cstdint>
+#include <memory>
+#include <type_traits>
+#include <vector> 
+#include "esp_log.h"
+#include "WiFiManager.hpp"
+
+#include "file_manager.hpp"
 
 
+namespace Network {
+static const char* TAG = "KCP_CLIENT";
 
-// namespace Network {
-// static const char* TAG = "KCP_CLIENT";
+    class manager{
 
-//     class manager{
+private:
+bool hasWifi=false;
+std::unique_ptr<KcpClient>u_KcpClient;
+std::string fileName = "audio_unsend";
 
-// private:
-// bool hasWifi=false;
-// std::unique_ptr<KcpClient>u_KcpClient;
-// public:
+protected:
+std::shared_ptr<WiFiManager>s_WiFiManager;
+ std::shared_ptr<FileManager> fileManager;
+public:
 
 
-// manager(uint32_t conv_id );
+manager(uint32_t conv_id ,std::shared_ptr<WiFiManager>s_WiFiManager, std::shared_ptr<FileManager> fileManager);
 
-// bool try_connectWithServer( const char* host, const char* port);
-// bool initWifi(const char* ssid, const char* password);
-
-//     void close_connection()const;
-
-//     // Core Tick & Data Flow Methods
-//     void update(uint32_t current_ms)const ;
-//  std::vector<uint8_t> poll_and_receive();
  
-//   int send(const std::vector<uint8_t> &  data);
+    void close_connection()const;
+
+    // Core Tick & Data Flow Methods
+    void update(uint32_t current_ms)const;
+ std::vector<uint8_t> poll_and_receive();
+ 
+  int send(const std::vector<uint8_t> &  data);
 
 
 
@@ -40,5 +44,5 @@
 
 
 
-//     };
-// }
+    };
+}

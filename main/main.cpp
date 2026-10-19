@@ -9,10 +9,8 @@
 #include "mic_speech.h"
 #include "audio_driver.h"
 #include "rgb_led_driver.h"
-#include "button_driver.h" 
-#include "wifi_manager.h" 
-#include "macroPhone/arguments.hpp"
-#include "wifi_init.hpp"
+#include "button_driver.h"  
+#include "macroPhone/arguments.hpp" 
 #include "nvs_manager.hpp"
 #include <memory>
 #include "file_manager.hpp"

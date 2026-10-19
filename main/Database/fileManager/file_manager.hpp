@@ -2,7 +2,7 @@
 #include "esp_spiffs.h"
 #include <string>
 #include "esp_err.h"
-
+#include <vector>
 class FileManager {
 public:
     FileManager();
@@ -12,12 +12,16 @@ public:
     esp_err_t deinit();
 
     bool writeFile(const std::string& filename, const std::string& data);
-    bool appendFile(const std::string& filename, const std::string& data);
+    bool appendFile(const std::string& filename, const std::string& data);   
+     bool writeFile(const std::string& filename, const std::vector<uint8_t>& data);
+    bool appendFile(const std::string& filename, const std::vector<uint8_t>& data);
     std::string readFile(const std::string& filename);
+    std::vector<uint8_t> readFileBytes(const std::string& filename);
+    std::vector<uint8_t> readFileBytes(const std::string& filename, size_t offset, size_t size);
     bool deleteFile(const std::string& filename);
     bool exists(const std::string& filename);
     bool getStorageStats(size_t* total_bytes, size_t* free_bytes);
-
+void shiftBytes(const std::string& filename, size_t shiftDistance, bool left);
 private:
     std::string m_base_path;
     std::string m_partition_label;

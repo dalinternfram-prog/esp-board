@@ -8,8 +8,7 @@
 
 #include "audio_capture_driver.hpp"
 
-#include "./audio-collect.hpp"
-#include "wifi_init.hpp"
+#include "./audio-collect.hpp" 
 #include "nvs_manager.hpp"
 #include <memory>
 #include <string>

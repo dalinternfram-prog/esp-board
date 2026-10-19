@@ -263,6 +263,15 @@ bool FileManager::appendFile(const std::string& filename, const std::string& dat
     fclose(f); // Flush buffer and release file handle
     return true;
 }
+bool FileManager::writeFile(const std::string& filename, const std::vector<uint8_t>& data) {
+    std::string s(data.begin(), data.end());
+    return writeFile(filename, s);
+}
+
+bool FileManager::appendFile(const std::string& filename, const std::vector<uint8_t>& data) {
+    std::string s(data.begin(), data.end());
+    return appendFile(filename, s);
+}
 
 // Reads and returns the entire contents of a specified file into a std::string
 std::string FileManager::readFile(const std::string& filename) {
@@ -286,6 +295,136 @@ std::string FileManager::readFile(const std::string& filename) {
     fclose(f); // Free file descriptor resource
     return content;
 }
+// Reads and returns the entire binary contents of a specified file into a std::vector<uint8_t>
+std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename) {
+    std::string path = getFullPath(filename); // Convert to complete mount path
+    FILE* f = fopen(path.c_str(), "rb");       // Open file stream for binary reading ("rb")
+    if (f == NULL) {
+        ESP_LOGW(TAG, "Failed to open file for reading: %s", path.c_str());
+        return {}; // Return empty vector if target file cannot be opened
+    }
+
+    // Seek to end to derive total byte length
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f); // Get current position offset (file size)
+    fseek(f, 0, SEEK_SET); // Reset file pointer back to starting position
+
+    std::vector<uint8_t> content;
+    if (length > 0) {
+        content.resize(length);               // Allocate exact memory in vector buffer
+        fread(content.data(), 1, length, f);  // Read entire content directly into vector buffer memory
+    }
+    fclose(f); // Free file descriptor resource
+    return content;
+}
+
+std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename, size_t offset, size_t size) {
+    std::string path = getFullPath(filename); // Convert to complete mount path
+    FILE* f = fopen(path.c_str(), "rb");        // Open file stream for binary reading ("rb")
+    if (f == NULL) {
+        ESP_LOGW(TAG, "Failed to open file for reading: %s", path.c_str());
+        return {}; // Return empty vector if target file cannot be opened
+    }
+
+    // Check total file size to make sure we don't read past the end
+    fseek(f, 0, SEEK_END);
+    long totalLength = ftell(f);
+    if (totalLength < 0 || static_cast<size_t>(offset) >= static_cast<size_t>(totalLength)) {
+        fclose(f);
+        return {}; // Offset is out of bounds
+    }
+
+    // Adjust size if requested size exceeds available bytes from offset
+    size_t bytesToRead = size;
+    if (offset + bytesToRead > static_cast<size_t>(totalLength)) {
+        bytesToRead = totalLength - offset;
+    }
+
+    std::vector<uint8_t> content;
+    if (bytesToRead > 0) {
+        // Seek directly to the target offset from the beginning of the file
+        if (fseek(f, static_cast<long>(offset), SEEK_SET) != 0) {
+            fclose(f);
+            return {}; // Seek failed
+        }
+
+        content.resize(bytesToRead);              // Allocate memory ONLY for the requested chunk
+        fread(content.data(), 1, bytesToRead, f); // Read only those specific bytes into memory
+    }
+
+    fclose(f); // Free file descriptor resource
+    return content;
+}
+
+
+
+
+
+// Method to shift bytes within a file by a given shiftDistance (left or right) in constant memory chunks
+void FileManager::shiftBytes(const std::string& filename, size_t shiftDistance, bool left) {
+    if (shiftDistance == 0) return;
+
+    std::string fullPath = getFullPath(filename);
+    std::string tempPath = fullPath + ".tmp";
+    const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM from OOM crashes
+    size_t currentReadOffset = left ? shiftDistance : 0;
+    bool firstChunk = true;
+
+    // 1. Stream valid data into a temporary file with the applied shift
+    while (true) {
+        std::vector<uint8_t> chunk = readFileBytes(filename, currentReadOffset, CHUNK_SIZE);
+        if (chunk.empty()) {
+            break; // Reached the end of the file stream
+        }
+
+        if (firstChunk) {
+            writeFile(filename + ".tmp", chunk); // Initialize temp file with first chunk
+            firstChunk = false;
+        } else {
+            appendFile(filename + ".tmp", chunk); // Append subsequent chunks sequentially
+        }
+
+        currentReadOffset += chunk.size();
+        if (chunk.size() < CHUNK_SIZE) {
+            break; // Last partial chunk read
+        }
+    }
+
+    // 2. Stream the compacted temporary file back to the original file
+    currentReadOffset = 0;
+    firstChunk = true;
+    while (true) {
+        std::vector<uint8_t> cleanChunk = readFileBytes(filename + ".tmp", currentReadOffset, CHUNK_SIZE);
+        if (cleanChunk.empty()) {
+            break;
+        }
+
+        if (firstChunk) {
+            writeFile(filename, cleanChunk);
+            firstChunk = false;
+        } else {
+            appendFile(filename, cleanChunk);
+        }
+
+        currentReadOffset += cleanChunk.size();
+        if (cleanChunk.size() < CHUNK_SIZE) {
+            break;
+        }
+    }
+
+    // 3. Clean up the temporary file by clearing it out
+    writeFile(filename + ".tmp", std::vector<uint8_t>());
+}
+ 
+
+
+
+
+
+
+
+
+
 
 // Deletes a specified file from the SPIFFS filesystem
 bool FileManager::deleteFile(const std::string& filename) {
