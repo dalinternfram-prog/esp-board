@@ -41,8 +41,7 @@ static const char* TAG = "AppLoop";
 
  
 
-void app_run_loop(
-     std::shared_ptr<WifiInit> wifiInit,
+void app_run_loop( 
      std::shared_ptr<NvsManager> nvsManager,
      std::shared_ptr<FileManager> fileManager,
      std::shared_ptr<FirmwareSwitch> firmwareSwitch

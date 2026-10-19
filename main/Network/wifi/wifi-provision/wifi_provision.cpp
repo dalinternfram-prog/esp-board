@@ -6,7 +6,7 @@
 #include <cstring>            // Include standard C string manipulation library header
 #include <algorithm>          // Include standard C++ algorithm library header
 #include "captive_portal.h"   // [NEW] Include external open-source captive portal component header for automatic OS probe redirection
-
+#include "wifi_init.hpp"
 //  Lightweight helper function to URL-decode incoming form strings (converts '+' to space and handles hex encoding)
 static  std::string url_decode(const std::string& str) {
     std::string result;
@@ -59,9 +59,15 @@ bool WifiProvision::start() { // Method to start SoftAP and provisioning web ser
     wifi_config.ap.max_connection = 4; // Set maximum simultaneous client connection limit to 4
     wifi_config.ap.authmode = WIFI_AUTH_OPEN; // Set authentication mode to open (no password for config AP)
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP)); // Configure Wi-Fi driver operating mode to Access Point
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config)); // Apply AP configuration settings to driver
-    ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi driver execution in AP mode
+    // ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP)); // Configure Wi-Fi driver operating mode to Access Point
+    // ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config)); // Apply AP configuration settings to driver
+    // ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi driver execution in AP mode
+
+
+ 
+wifi::switch_wifi_mode(wifi_mode_t::WIFI_MODE_AP,&wifi_config); 
+
+
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG(); // Load default HTTP server configuration settings struct
     // [FIX] Enable LRU purge to automatically drop stale/idle connections when sockets run out

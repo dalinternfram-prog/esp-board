@@ -3,6 +3,7 @@
 #include <cstring>            // Include standard C string manipulation library header
 #include "freertos/FreeRTOS.h" // Include FreeRTOS base header for task delays
 #include "freertos/task.h"       // Include FreeRTOS task management header
+#include "wifi_init.hpp"
 
 // [NEW] Static C-style event bridge function implementation
 void WifiClient::wifi_event_bridge(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
@@ -78,41 +79,23 @@ bool WifiClient::connect(const std::string& ssid, const std::string& password) {
 
 
 esp_err_t ret;
-// Check current mode first to avoid redundant driver re-inits
-    wifi_mode_t current_mode;
-    if (esp_wifi_get_mode(&current_mode) == ESP_OK) {
-        if (current_mode != WIFI_MODE_APSTA) {
-              ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to set Wi-Fi APSTA mode: %s", esp_err_to_name(ret));
-                return false;
-            }
-            ESP_LOGI(TAG, "Switched to APSTA mode for credential testing.");
-        }
-    }
+ 
+ 
 
-
-
-
-
-    // esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA); // Set Wi-Fi operating mode to Station (STA)
-    // if (ret != ESP_OK) {      // Check if setting mode failed
-    //     ESP_LOGE(TAG, "Failed to set Wi-Fi STA mode: %s", esp_err_to_name(ret)); // Log error details
-    //     return false;         // Return failure status boolean
-    // }                         // End of mode error check block
-
-    ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_config); // Apply SSID and password configuration to interface
-    if (ret != ESP_OK) {      // Check if configuration assignment failed
-        ESP_LOGE(TAG, "Failed to set Wi-Fi configuration: %s", esp_err_to_name(ret)); // Log error details
-        return false;         // Return failure status boolean
-    }                         // End of config error check block
+wifi::switch_wifi_mode(wifi_mode_t::WIFI_MODE_STA,&wifi_config);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+                      // End of config error check block
 
     ESP_LOGI(TAG, "Triggering connection to SSID: [%s]...", ssid.c_str()); // Log connection progress
-    ret = esp_wifi_connect();   // Call ESP-IDF driver API to initiate connection sequence
+    for(int i =0;i<10;++i){
+        // try 10 times;
+            ret = esp_wifi_connect();   // Call ESP-IDF driver API to initiate connection sequence
     if (ret != ESP_OK) {        // Check if connection trigger failed
         ESP_LOGE(TAG, "Failed to trigger esp_wifi_connect: %s", esp_err_to_name(ret)); // Log error details
         return false;           // Return failure status boolean
-    }                           // End of connect trigger error check block
+    }    
+    }
+                       // End of connect trigger error check block
 
     return true;                // Return success boolean indicating connection command was accepted
 }                             // End of connect method

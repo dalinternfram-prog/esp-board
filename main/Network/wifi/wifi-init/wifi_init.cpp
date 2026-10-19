@@ -62,7 +62,47 @@ namespace wifi {                              // Namespace grouping Wi-Fi initia
  * Safely switches the ESP32 Wi-Fi operational mode.
  * Handles stopping the driver, changing the mode, and restarting it.
  */
-bool switch_wifi_mode(wifi_mode_t target_mode) {
+// bool switch_wifi_mode(wifi_mode_t target_mode) {
+    
+//     // Variable to hold the current operational mode of the ESP32
+//     wifi_mode_t current_mode;
+    
+//     // Query the Wi-Fi driver to find out what mode it is currently running in
+//     if (esp_wifi_get_mode(&current_mode) != ESP_OK) {
+//         ESP_LOGE(TAG, "Failed to get current Wi-Fi mode");
+//         return false; // Abort if we cannot read the hardware state
+//     }
+
+//     // Check if the ESP32 is already running in the desired mode
+//     if (current_mode == target_mode) {
+//         ESP_LOGI(TAG, "Already in the requested Wi-Fi mode, no change needed.");
+//         return true; // Exit early since nothing needs to change
+//     }
+
+//     ESP_LOGI(TAG, "Switching Wi-Fi mode... Stopping current driver state.");
+
+//     // Stop the Wi-Fi driver before changing its configuration (mandatory in ESP-IDF)
+//     if (esp_wifi_stop() != ESP_OK) {
+//         ESP_LOGW(TAG, "Warning: Wi-Fi was not running or failed to stop cleanly.");
+//     }
+
+//     // Apply the new target mode (e.g., WIFI_MODE_STA or WIFI_MODE_AP) to the driver
+//     if (esp_wifi_set_mode(target_mode) != ESP_OK) {
+//         ESP_LOGE(TAG, "Failed to set the new Wi-Fi mode in the driver.");
+//         return false; // Abort if the driver rejects the mode
+//     }
+
+//     // Restart the Wi-Fi driver so it initializes buffers and hardware for the new mode
+//     if (esp_wifi_start() != ESP_OK) {
+//         ESP_LOGE(TAG, "Failed to restart Wi-Fi after mode change.");
+//         return false; // Abort if the driver fails to boot back up
+//     }
+
+//     ESP_LOGI(TAG, "Wi-Fi mode successfully changed and driver restarted.");
+//     return true; // Mode switch complete and successful
+// }
+
+ bool switch_wifi_mode(wifi_mode_t target_mode, wifi_config_t *wifi_config , wifi_interface_t explicit_ifx ) {
     
     // Variable to hold the current operational mode of the ESP32
     wifi_mode_t current_mode;
@@ -74,7 +114,7 @@ bool switch_wifi_mode(wifi_mode_t target_mode) {
     }
 
     // Check if the ESP32 is already running in the desired mode
-    if (current_mode == target_mode) {
+    if (current_mode == target_mode && wifi_config == nullptr) {
         ESP_LOGI(TAG, "Already in the requested Wi-Fi mode, no change needed.");
         return true; // Exit early since nothing needs to change
     }
@@ -92,6 +132,28 @@ bool switch_wifi_mode(wifi_mode_t target_mode) {
         return false; // Abort if the driver rejects the mode
     }
 
+    // Apply configuration safely while the driver is stopped (if provided)
+    if (wifi_config != nullptr) {
+        wifi_interface_t target_ifx = explicit_ifx;
+
+        // If the user didn't specify an interface manually, infer it from the mode
+        if (target_ifx == WIFI_IF_MAX) {
+            if (target_mode == WIFI_MODE_AP) {
+                target_ifx = WIFI_IF_AP;
+            } else if (target_mode == WIFI_MODE_STA) {
+                target_ifx = WIFI_IF_STA;
+            } else {
+                ESP_LOGE(TAG, "APSTA mode requires an explicit interface specification!");
+                return false;
+            }
+        }
+
+        if (esp_wifi_set_config(target_ifx, wifi_config) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to apply Wi-Fi configuration settings.");
+            return false;
+        }
+    }
+
     // Restart the Wi-Fi driver so it initializes buffers and hardware for the new mode
     if (esp_wifi_start() != ESP_OK) {
         ESP_LOGE(TAG, "Failed to restart Wi-Fi after mode change.");
@@ -101,9 +163,6 @@ bool switch_wifi_mode(wifi_mode_t target_mode) {
     ESP_LOGI(TAG, "Wi-Fi mode successfully changed and driver restarted.");
     return true; // Mode switch complete and successful
 }
-
-
-
 
 
 

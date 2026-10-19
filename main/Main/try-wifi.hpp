@@ -7,6 +7,7 @@
 
  #include<string>
 #include "wifi_client.hpp"
+#include "wifi_init.hpp"
 #include "wifi_provision.hpp"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -41,7 +42,7 @@ inline bool tryConnectAndStabilize( std::shared_ptr<WifiClient> wifiClient, cons
     }
 
     // Give the asynchronous connection handshake time to stabilize and obtain an IP
-    for (int attempt = 0; attempt < 20; ++attempt) {
+    for (int attempt = 0; attempt < 40; ++attempt) {
         vTaskDelay(pdMS_TO_TICKS(500)); // Check connection state every 500ms (up to 10 seconds)
         
         // Check raw disconnect telemetry for fast-fail (e.g. wrong password or out of range)
@@ -75,6 +76,8 @@ inline bool handleProvisioning(WifiMonitorParams* params, bool& provisioning_act
     
     // Immediately clear/consume so it doesn't loop on the same bad input forever!
     params->wifiProvision->clearCredentials();
+params->wifiProvision->stop();
+wifi::switch_wifi_mode(wifi_mode_t::WIFI_MODE_STA);
 
     if (tryConnectAndStabilize(params->wifiClient, new_ssid, new_pass, "Provisioned")) {
         ESP_LOGI(TAG, "Provisioned connection successful! Saving to NVS...");

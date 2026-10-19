@@ -27,8 +27,7 @@ static uint16_t Search_mp3_file_count = 0;
 static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
 
-void app_run_loop(
-     std::shared_ptr<WifiInit> wifiInit,
+void app_run_loop( 
      std::shared_ptr<NvsManager> nvsManager,
      std::shared_ptr<FileManager> fileManager,
      std::shared_ptr<FirmwareSwitch> firmwareSwitch
@@ -259,8 +258,8 @@ extern "C" void app_main()
      Search_mp3_Music();
 
             ESP_LOGI("++++++++++++","success Search_mp3_Music" );
+ 
 
-std::shared_ptr<WifiInit> wifi_init_class=std::make_shared<WifiInit>();
 std::shared_ptr<NvsManager> NvsManager_class=std::make_shared<NvsManager>();
 
 std::shared_ptr<FileManager> FileManager_class=std::make_shared<FileManager>();
@@ -268,12 +267,12 @@ std::shared_ptr<FileManager> FileManager_class=std::make_shared<FileManager>();
 std::shared_ptr<FirmwareSwitch> FirmwareSwitch_class=std::make_shared<FirmwareSwitch>();
 
 
-NvsManager_class->init();
-wifi_init_class->initialize();
+NvsManager_class->init(); 
+wifi::initialize();
 FileManager_class->init();
 FirmwareSwitch_class->init();
 
 
- app_run_loop(wifi_init_class,NvsManager_class,FileManager_class,FirmwareSwitch_class);
+ app_run_loop( NvsManager_class,FileManager_class,FirmwareSwitch_class);
 
 }
