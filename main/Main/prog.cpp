@@ -14,10 +14,8 @@
 #include <memory>
 #include <string>
 #include "file_manager.hpp"
-#include "firmware_switch.hpp"
-#include "wifi_client.hpp"
-#include "wifi_provision.hpp" 
-#include "wifi-manager/WiFiManager.hpp"
+#include "firmware_switch.hpp" 
+#include "WiFiManager.hpp"
 //**
 // 
 // idf.py monitor

@@ -268,7 +268,7 @@ std::shared_ptr<FirmwareSwitch> FirmwareSwitch_class=std::make_shared<FirmwareSw
 
 
 NvsManager_class->init(); 
-wifi::initialize();
+//wifi::initialize();
 FileManager_class->init();
 FirmwareSwitch_class->init();
 
