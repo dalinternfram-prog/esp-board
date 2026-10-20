@@ -1,204 +1,208 @@
 
-#include "file-vector.hpp" // Include the header file containing the fileVector class declaration
-#include "esp_timer.h"     // Include ESP-IDF timer functions to get high-resolution timestamps
+  
+
+#include "file-vector.hpp"
+#include "esp_timer.h"
 #include <cstddef>
 #include <vector>
-namespace file {           // Begin the 'file' namespace for organization
 
-// Constructor implementation for the fileVector class
+namespace file {
+
+// Helper method to read a text file (like JSON metadata) using readFileBytes
+std::string fileVector::readTextFile(const std::string& path) {
+    if (!FileManager_) return "";
+    std::vector<uint8_t> bytes = FileManager_->readFileBytes(path, 0, -1);
+    return std::string(bytes.begin(), bytes.end());
+}
+
+// Constructor implementation
 fileVector::fileVector(std::string fileName, std::shared_ptr<FileManager> FileManager_)
-    : FileManager_(std::move(FileManager_)), fileName(std::move(fileName)) { // Initialize member variables, matching the member declaration order
+    : FileManager_(std::move(FileManager_)), fileName(std::move(fileName)) {
     
-    std::string jsonPath = fileName + ".json"; // Construct the metadata file path by appending ".json"
-    if (!FileManager_->exists(jsonPath)) {     // Check if the metadata JSON file does not already exist
-        JsonDocument doc;                      // Declare an ArduinoJson v7 document to hold metadata
-        doc["elements"] = JsonArray();         // Initialize the "elements" key with an empty JSON array
+    std::string jsonPath = fileName + ".json";
+    if (!FileManager_->exists(jsonPath)) {
+        JsonDocument doc;
+        doc["elements"] = JsonArray();
         
-        std::string output;                    // Create a string to store the serialized JSON data
-        serializeJson(doc, output);            // Serialize the JSON document into the output string
-        FileManager_->writeFile(jsonPath, output); // Write the initial JSON string to the metadata file
-    }                                          // End of the metadata file creation conditional block
-}                                              // End of the constructor definition
+        std::string output;
+        serializeJson(doc, output);
+        FileManager_->writeFile(jsonPath, output, 0);
+    }
+}
 
-// Method to append a new block of raw byte data to the vector
+// Method to append raw byte data (using writeFile with offset = -1 for append mode)
 void fileVector::push_back(const std::vector<uint8_t>& data) {
-    if (!FileManager_) return;                 // Guard clause: exit early if the file manager pointer is null
+    if (!FileManager_) return;
 
-    std::string jsonPath = fileName + ".json"; // Build the metadata JSON file path
-    std::string jsonStr = FileManager_->readFile(jsonPath); // Read the current metadata JSON content from storage
+    std::string jsonPath = fileName + ".json";
+    std::string jsonStr = readTextFile(jsonPath);
 
-    JsonDocument doc;                          // Declare a new ArduinoJson v7 document
-    DeserializationError error = deserializeJson(doc, jsonStr); // Attempt to parse the JSON string into the document
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, jsonStr);
     
-    if (error) {                               // Check if deserialization failed (e.g., corrupted file)
-        doc.clear();                           // Clear the corrupted document contents
-        doc["elements"] = JsonArray();         // Re-initialize the "elements" key with a fresh empty array
-    }                                          // End of the error handling conditional block
+    if (error) {
+        doc.clear();
+        doc["elements"] = JsonArray();
+    }
 
-    JsonArray elements = doc["elements"].to<JsonArray>(); // Access or convert the "elements" node into a JsonArray
+    JsonArray elements = doc["elements"].to<JsonArray>();
 
-    int currentOffset = 0;                     // Initialize the byte offset for the new element to 0
-    if (elements.size() > 0) {                 // Check if there are already existing elements in the array
-        JsonObject lastElement = elements[elements.size() - 1]; // Retrieve the last element object in the array
-        currentOffset = lastElement["offset"].as<int>() + lastElement["byteSize"].as<size_t>(); // Calculate the next offset based on the last element's position and size
-    }                                          // End of the offset calculation conditional block
+    int currentOffset = 0;
+    if (elements.size() > 0) {
+        JsonObject lastElement = elements[elements.size() - 1];
+        currentOffset = lastElement["offset"].as<int>() + lastElement["byteSize"].as<size_t>();
+    }
 
-    FileManager_->appendFile(fileName, data);  // Append the raw byte data to the main data file
+    // Use writeFile with offset < 0 (-1) for append mode
+    FileManager_->writeFile(fileName, data, -1);
 
-    JsonObject newElement = elements.add<JsonObject>(); // Use ArduinoJson v7 syntax to create and add a new nested object
-    newElement["byteSize"] = data.size();      // Store the size of the added byte block
-    newElement["offset"] = currentOffset;      // Store the calculated byte offset where this element starts
-    newElement["AddingTime"] = static_cast<uint32_t>(esp_timer_get_time() / 1000); // Record the current timestamp in milliseconds using the ESP timer
+    JsonObject newElement = elements.add<JsonObject>();
+    newElement["byteSize"] = data.size();
+    newElement["offset"] = currentOffset;
+    newElement["AddingTime"] = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
-    std::string updatedJson;                   // Create a string to hold the updated JSON metadata
-    serializeJson(doc, updatedJson);           // Serialize the modified document into the string
-    FileManager_->writeFile(jsonPath, updatedJson); // Write the updated metadata string back to the JSON file
-}                                              // End of push_back method definition
+    std::string updatedJson;
+    serializeJson(doc, updatedJson);
+    FileManager_->writeFile(jsonPath, updatedJson, 0);
+}
 
-// Method to retrieve the current size (number of elements) of the vector
-void fileVector::GetCurrentSize() {
-    std::string jsonPath = fileName + ".json"; // Construct the metadata JSON file path
-    std::string jsonStr = FileManager_->readFile(jsonPath); // Read the JSON metadata file contents
+// Method to retrieve the current size (number of elements)
+size_t fileVector::GetCurrentSize() const {
+    if (!FileManager_) return 0;
+    std::string jsonPath = fileName + ".json";
+    std::vector<uint8_t> bytes = FileManager_->readFileBytes(jsonPath, 0, -1);
+    std::string jsonStr(bytes.begin(), bytes.end());
     
-    JsonDocument doc;                          // Declare an ArduinoJson v7 document
-    if (deserializeJson(doc, jsonStr) == DeserializationError::Ok) { // Check if JSON deserialization succeeds
-        JsonArray elements = doc["elements"].as<JsonArray>(); // Extract the "elements" array reference
-        // elements.size();                    // Commented-out line representing size retrieval logic
-    }                                          // End of the deserialization success conditional block
-}                                              // End of GetCurrentSize method definition
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonStr) == DeserializationError::Ok) {
+        JsonArray elements = doc["elements"].as<JsonArray>();
+        return elements.size();
+    }
+    return 0;
+}
 
-// Method to fetch a specific element's raw byte data by its index
+// Method to fetch a specific element's raw byte data by index
 std::vector<uint8_t> fileVector::Fetch(int i) {
-    std::vector<uint8_t> emptyResult;          // Create an empty vector to return in case of errors
-    if (!FileManager_) return emptyResult;     // Guard clause: return empty vector if file manager is null
+    std::vector<uint8_t> emptyResult;
+    if (!FileManager_) return emptyResult;
 
-    std::string jsonPath = fileName + ".json"; // Build the metadata JSON file path
-    std::string jsonStr = FileManager_->readFile(jsonPath); // Read the JSON metadata content
+    std::string jsonPath = fileName + ".json";
+    std::string jsonStr = readTextFile(jsonPath);
 
-    JsonDocument doc;                          // Declare an ArduinoJson v7 document
-    if (deserializeJson(doc, jsonStr) != DeserializationError::Ok) { // Check if JSON parsing failed
-        return emptyResult;                    // Return the empty result vector on error
-    }                                          // End of the parsing error check block
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonStr) != DeserializationError::Ok) {
+        return emptyResult;
+    }
 
-    JsonArray elements = doc["elements"].as<JsonArray>(); // Get the "elements" JSON array
-    if (i < 0 || i >= static_cast<int>(elements.size())) { // Validate that the requested index is within bounds
-        return emptyResult;                    // Return empty vector if index is out of bounds
-    }                                          // End of the bounds checking conditional block
+    JsonArray elements = doc["elements"].as<JsonArray>();
+    if (i < 0 || i >= static_cast<int>(elements.size())) {
+        return emptyResult;
+    }
 
-    JsonObject target = elements[i];           // Retrieve the target JSON object at index i
-    size_t byteSize = target["byteSize"].as<size_t>(); // Extract the byte size of the target element
-    size_t offset = target["offset"].as<size_t>(); // Extract the starting byte offset of the target element (cast to size_t)
+    JsonObject target = elements[i];
+    size_t byteSize = target["byteSize"].as<size_t>();
+    size_t offset = target["offset"].as<size_t>();
 
-    // NEW: Use range-based readFileBytes to read ONLY the target chunk, preventing RAM overflow on large files
-    return FileManager_->readFileBytes(fileName, offset, byteSize); // Read and return only the specific byte slice
-}                                              // End of Fetch method definition
+    return FileManager_->readFileBytes(fileName, offset, byteSize);
+}
 
-// Method to remove and return the last element from the vector (Pop operation)
-std::vector<uint8_t> fileVector::Pop() {
-    std::vector<uint8_t> emptyResult;          // Create an empty vector for error returns
-    if (!FileManager_) return emptyResult;     // Guard clause: return empty vector if file manager is null
+ 
+// Generalized Pop method: i = -1 (or last index) pops the last element, 0 pops the first, or any index
+std::vector<uint8_t> fileVector::Pop(int i) {
+    std::vector<uint8_t> emptyResult;
+    if (!FileManager_) return emptyResult;
 
-    std::string jsonPath = fileName + ".json"; // Build the metadata JSON file path
-    std::string jsonStr = FileManager_->readFile(jsonPath); // Read the JSON metadata string from storage
+    std::string jsonPath = fileName + ".json";
+    std::string jsonStr = readTextFile(jsonPath);
 
-    JsonDocument doc;                          // Declare an ArduinoJson v7 document
-    if (deserializeJson(doc, jsonStr) != DeserializationError::Ok) { // Verify successful JSON deserialization
-        return emptyResult;                    // Return empty vector if deserialization fails
-    }                                          // End of deserialization check block
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonStr) != DeserializationError::Ok) {
+        return emptyResult;
+    }
 
-    JsonArray elements = doc["elements"].as<JsonArray>(); // Extract the "elements" JSON array
-    if (elements.size() == 0) {                // Check if the vector/array is currently empty
-        return emptyResult;                    // Return empty vector if there's nothing to pop
-    }                                          // End of empty check conditional block
+    JsonArray elements = doc["elements"].as<JsonArray>();
+    size_t n = elements.size();
+    if (n == 0) {
+        return emptyResult;
+    }
 
-    JsonObject lastElement = elements[elements.size() - 1]; // Get the last element object from the array
-    size_t byteSize = lastElement["byteSize"].as<size_t>(); // Extract the byte size of the last element
-    int offset = lastElement["offset"].as<size_t>(); // Extract the starting byte offset of the last element
+    // Convert negative index (e.g., -1) to positive index
+    if (i < 0) {
+        i = static_cast<int>(n) + i;
+    }
 
-    std::vector<uint8_t> rawData = FileManager_->readFileBytes(fileName); // Read all raw bytes from the main data file
-    std::vector<uint8_t> result;               // Declare a vector to store the popped data result
-    
-    if (rawData.size() >= static_cast<size_t>(offset + byteSize)) { // Check if the raw data file contains the expected range
-        result.assign(rawData.begin() + offset, rawData.begin() + offset + byteSize); // Copy target element bytes into the result vector
-        rawData.resize(offset);                // Truncate the raw data vector to remove the popped element
-        FileManager_->writeFile(fileName, rawData); // Write the truncated byte stream back to the main data file
-    }                                          // End of the data truncation conditional block
+    // Validate index bounds
+    if (i < 0 || i >= static_cast<int>(n)) {
+        return emptyResult;
+    }
 
-    elements.remove(elements.size() - 1);      // Remove the last element entry from the JSON elements array
-    std::string updatedJson;                   // Create a string to hold the updated JSON metadata
-    serializeJson(doc, updatedJson);           // Serialize the modified JSON document
-    FileManager_->writeFile(jsonPath, updatedJson); // Write the updated metadata string back to the file
+    JsonObject target = elements[i];
+    size_t byteSize = target["byteSize"].as<size_t>();
+    size_t offset = target["offset"].as<size_t>();
 
-    return result;                             // Return the popped byte vector
-}                                              // End of Pop method definition
+    // 1. Read target element bytes before removal
+    std::vector<uint8_t> result = FileManager_->readFileBytes(fileName, offset, byteSize);
 
- // Method to remove and research the first element using Lazy Compaction FIFO strategy
-std::vector<uint8_t> fileVector::PopFront() {
-    std::vector<uint8_t> emptyResult;          // Create an empty vector for error returns
-    if (!FileManager_) return emptyResult;     // Guard clause: return empty vector if file manager is null
+    // 2. Remove element reference from JSON array
+    elements.remove(i);
 
-    std::string jsonPath = fileName + ".json"; // Build the metadata JSON file path
-    std::string jsonStr = FileManager_->readFile(jsonPath); // Read the JSON metadata file contents
-
-    JsonDocument doc;                          // Declare an ArduinoJson v7 document
-    if (deserializeJson(doc, jsonStr) != DeserializationError::Ok) { // Verify successful JSON deserialization
-        return emptyResult;                    // Return empty result if parsing fails
-    }                                          // End of deserialization check block
-
-    JsonArray elements = doc["elements"].as<JsonArray>(); // Extract the elements JSON array reference
-    if (elements.size() == 0) {                // Check if the queue is currently empty
-        return emptyResult;                    // Return empty result if there is nothing to pop
-    }                                          // End of empty check block
-
-    // 1. Get info about the first element
-    JsonObject firstElement = elements[0];     // Retrieve the first element object in the array
-    size_t frontByteSize = firstElement["byteSize"].as<size_t>(); // Get the byte size of the front element
-    size_t frontOffset = firstElement["offset"].as<size_t>(); // Get the absolute file offset of the front element
-
-    // 2. Read ONLY the popped element using range-based reader (Zero RAM bloat!)
-    std::vector<uint8_t> result = FileManager_->readFileBytes(fileName, frontOffset, frontByteSize);
-
-    // 3. Remove the first element reference from the JSON array immediately
-    elements.remove(0);                        // Drop the front element index from metadata
-
-    // 4. Lazy Compaction Logic
-    const size_t COMPACTION_THRESHOLD = 4096;  // Define waste threshold (4KB) before triggering file compaction
-    
-    if (elements.size() == 0) {
-        // If queue is completely empty, wipe the binary file clean to reclaim all disk space instantly
-        FileManager_->writeFile(fileName, std::vector<uint8_t>());
+    // 3. Handle data shifting / truncation based on pop location
+    if (elements.empty()) {
+        // Queue is completely empty: wipe file clean instantly using truncation (or write empty)
+        FileManager_->truncate(fileName, 0);
     } 
-    else {
-        // Check how much dead space has accumulated at the front of the file
+    else if (i == static_cast<int>(n) - 1) {
+        // Popping the LAST element: lightweight, just truncate the file to the new end size
+        size_t newFileSizeBytes = elements.back()["offset"].as<size_t>() + elements.back()["byteSize"].as<size_t>();
+        FileManager_->truncate(fileName, newFileSizeBytes);
+    } 
+    else if (i == 0) {
+        // Popping the FRONT element: Apply LAZY COMPACTION strategy!
+        const size_t COMPACTION_THRESHOLD = 4096; // 4KB threshold before shifting physical bytes
         size_t newStartOffset = elements[0]["offset"].as<size_t>();
 
         if (newStartOffset >= COMPACTION_THRESHOLD) {
-            // UPDATED: Delegate file shifting to the FileManager class helper
-            FileManager_->shiftBytes(fileName, newStartOffset, true);
+            // Shift bytes left from newStartOffset up to EOF (-1) by shiftDistance = newStartOffset
+            FileManager_->shiftBytes(fileName, newStartOffset, true, newStartOffset, -1);
+
+            // Truncate the trailing dead space off the end of the file
+            size_t newFileSizeBytes = elements.back()["offset"].as<size_t>() + elements.back()["byteSize"].as<size_t>() - newStartOffset;
+            FileManager_->truncate(fileName, newFileSizeBytes);
 
             // Shift all remaining JSON element offsets back down to start at 0
             for (JsonObject el : elements) {
                 size_t currentElOffset = el["offset"].as<size_t>();
-                el["offset"] = currentElOffset - newStartOffset; // Adjust offset relative to the new file start
+                el["offset"] = currentElOffset - newStartOffset;
             }
-        }                                      // End of compaction threshold conditional check
-    }                                          // End of empty vs non-empty queue check block
+        }
+    } 
+    else {
+        // Popping from the MIDDLE: Shift subsequent bytes left by byteSize starting right after the removed element
+        size_t shiftStart = offset + byteSize;
+        FileManager_->shiftBytes(fileName, byteSize, true, shiftStart, -1);
 
-    // 5. Save the updated JSON metadata
-    std::string updatedJson;                   // Create a string to hold the updated JSON metadata
-    serializeJson(doc, updatedJson);           // Serialize the modified document into string format
-    FileManager_->writeFile(jsonPath, updatedJson); // Write the updated JSON metadata back to the file
+        // Adjust all subsequent JSON element offsets down
+        for (size_t j = i; j < elements.size(); ++j) {
+            JsonObject el = elements[j];
+            size_t currentElOffset = el["offset"].as<size_t>();
+            el["offset"] = currentElOffset - byteSize;
+        }
 
-    return result;                             // Return the extracted front byte vector
-}                                              // End of PopFront method definition
-} // namespace file                            // Close the 'file' namespace
+        // Truncate the file at the new valid end size
+        size_t newFileSizeBytes = elements.back()["offset"].as<size_t>() + elements.back()["byteSize"].as<size_t>();
+        FileManager_->truncate(fileName, newFileSizeBytes);
+    }
 
+    // 4. Save updated JSON metadata
+    std::string updatedJson;
+    serializeJson(doc, updatedJson);
+    FileManager_->writeFile(jsonPath, updatedJson, 0);
 
-
-
-
-
-
-std::vector<uint8_t> fileVeector::Pop(size_t i){
-    
+    return result;
 }
+
+
+
+
+
+} // namespace file

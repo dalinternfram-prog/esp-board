@@ -227,98 +227,96 @@ std::string FileManager::getFullPath(const std::string& filename) const {
     }
     return m_base_path + "/" + filename;      // Inject missing path separator between base and filename
 }
+ bool FileManager::truncate(const std::string& path, size_t newSize) {
+    std::string fullPath = getFullPath(path);
+    
+    // Open for update ("r+") so we don't accidentally wipe it before calling truncation
+    FILE* f = fopen(fullPath.c_str(), "r+");
+    if (!f) return false;
+    
+    // Use fileno() to get the underlying file descriptor, then ftruncate
+    int result = ftruncate(fileno(f), newSize);
+    
+    fclose(f);
+    return (result == 0);
+}
 
-// Writes string data to a file (overwrites existing contents)
-bool FileManager::writeFile(const std::string& filename, const std::string& data) {
-    std::string path = getFullPath(filename); // Resolve target absolute path
-    FILE* f = fopen(path.c_str(), "w");        // Open file in write-truncate mode ("w")
+ bool FileManager::writeFile(const std::string& filename, const std::string& data, long offset) {
+    std::string path = getFullPath(filename);
+    
+    // Open in read/write mode ("r+"), create if it doesn't exist ("w+")
+    FILE* f = fopen(path.c_str(), "r+");
     if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing: %s", path.c_str());
+        f = fopen(path.c_str(), "w+");
+        if (f == NULL) {
+            ESP_LOGE(TAG, "Failed to open file for writing: %s", path.c_str());
+            return false;
+        }
+    }
+    
+    // 1. Determine the current file size
+    if (fseek(f, 0, SEEK_END) != 0) {
+        ESP_LOGE(TAG, "Failed to seek to end of file");
+        fclose(f);
+        return false;
+    }
+    long fileSize = ftell(f);
+    if (fileSize < 0) {
+        ESP_LOGE(TAG, "Failed to get file size");
+        fclose(f);
         return false;
     }
     
-    // Write full string buffer in a single chunk
+    // If offset is negative, treat it as append mode (write at the end of the file)
+    if (offset < 0) {
+        offset = fileSize;
+    }
+    
+    // 2. If offset exceeds file size, explicitly pad the gap with zeros
+    if (offset > fileSize) {
+        long gap = offset - fileSize;
+        constexpr size_t BUF_SIZE = 256;
+        char zeroBuffer[BUF_SIZE] = {0}; // Initialize buffer with zeros
+        
+        long remaining = gap;
+        while (remaining > 0) {
+            size_t toWrite = (remaining < (long)BUF_SIZE) ? (size_t)remaining : BUF_SIZE;
+            size_t written = fwrite(zeroBuffer, 1, toWrite, f);
+            if (written != toWrite) {
+                ESP_LOGE(TAG, "Failed to write zero-padding");
+                fclose(f);
+                return false;
+            }
+            remaining -= toWrite;
+        }
+    }
+    
+    // 3. Move to the target offset (whether specified, mapped to end, or padded)
+    if (fseek(f, offset, SEEK_SET) != 0) {
+        ESP_LOGE(TAG, "Failed to seek to offset %ld", offset);
+        fclose(f);
+        return false;
+    }
+    
+    // 4. Write the actual data
     size_t written = fwrite(data.c_str(), 1, data.size(), f);
-    fclose(f); // Always close the file stream after writing
+    fclose(f);
 
-    // Validate if the number of written bytes matches requested buffer length
+    // Validate write length
     if (written != data.size()) {
         ESP_LOGE(TAG, "Short write: wrote %d of %d bytes", (int)written, (int)data.size());
         return false;
     }
     return true;
 }
-
-// Appends string data to the end of a file (creates file if non-existent)
-bool FileManager::appendFile(const std::string& filename, const std::string& data) {
-    std::string path = getFullPath(filename); // Resolve absolute filesystem path
-    FILE* f = fopen(path.c_str(), "a");        // Open file in append-only mode ("a")
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for appending: %s", path.c_str());
-        return false;
-    }
-    
-    // Write chunk to end of file (Note: standard practice checks return byte count here as well)
-    fwrite(data.c_str(), 1, data.size(), f);
-    fclose(f); // Flush buffer and release file handle
-    return true;
-}
-bool FileManager::writeFile(const std::string& filename, const std::vector<uint8_t>& data) {
-    std::string s(data.begin(), data.end());
-    return writeFile(filename, s);
+// Overload wrapper for binary data (std::vector<uint8_t>)
+bool FileManager::writeFile(const std::string& filename, const std::vector<uint8_t>& data, long offset) {
+    // Cast the raw byte pointer to char* and construct a string view / string wrapper safely
+    std::string_view view(reinterpret_cast<const char*>(data.data()), data.size());
+    return writeFile(filename, std::string(view), offset);
 }
 
-bool FileManager::appendFile(const std::string& filename, const std::vector<uint8_t>& data) {
-    std::string s(data.begin(), data.end());
-    return appendFile(filename, s);
-}
-
-// Reads and returns the entire contents of a specified file into a std::string
-std::string FileManager::readFile(const std::string& filename) {
-    std::string path = getFullPath(filename); // Convert to complete mount path
-    FILE* f = fopen(path.c_str(), "r");        // Open file stream for reading ("r")
-    if (f == NULL) {
-        ESP_LOGW(TAG, "Failed to open file for reading: %s", path.c_str());
-        return ""; // Return empty string if target file cannot be opened
-    }
-
-    // Seek to end to derive total byte length
-    fseek(f, 0, SEEK_END);
-    long length = ftell(f); // Get current position offset (file size)
-    fseek(f, 0, SEEK_SET); // Reset file pointer back to starting position
-
-    std::string content;
-    if (length > 0) {
-        content.resize(length);              // Allocate exact memory in string buffer
-        fread(&content[0], 1, length, f);    // Read entire content directly into allocated buffer memory
-    }
-    fclose(f); // Free file descriptor resource
-    return content;
-}
-// Reads and returns the entire binary contents of a specified file into a std::vector<uint8_t>
-std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename) {
-    std::string path = getFullPath(filename); // Convert to complete mount path
-    FILE* f = fopen(path.c_str(), "rb");       // Open file stream for binary reading ("rb")
-    if (f == NULL) {
-        ESP_LOGW(TAG, "Failed to open file for reading: %s", path.c_str());
-        return {}; // Return empty vector if target file cannot be opened
-    }
-
-    // Seek to end to derive total byte length
-    fseek(f, 0, SEEK_END);
-    long length = ftell(f); // Get current position offset (file size)
-    fseek(f, 0, SEEK_SET); // Reset file pointer back to starting position
-
-    std::vector<uint8_t> content;
-    if (length > 0) {
-        content.resize(length);               // Allocate exact memory in vector buffer
-        fread(content.data(), 1, length, f);  // Read entire content directly into vector buffer memory
-    }
-    fclose(f); // Free file descriptor resource
-    return content;
-}
-
-std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename, size_t offset, size_t size) {
+std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename, long offset, long size) {
     std::string path = getFullPath(filename); // Convert to complete mount path
     FILE* f = fopen(path.c_str(), "rb");        // Open file stream for binary reading ("rb")
     if (f == NULL) {
@@ -327,29 +325,42 @@ std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename, siz
     }
 
     // Check total file size to make sure we don't read past the end
-    fseek(f, 0, SEEK_END);
-    long totalLength = ftell(f);
-    if (totalLength < 0 || static_cast<size_t>(offset) >= static_cast<size_t>(totalLength)) {
+    if (fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
-        return {}; // Offset is out of bounds
+        return {};
+    }
+    long totalLength = ftell(f);
+    if (totalLength < 0 || offset < 0 || offset >= totalLength) {
+        fclose(f);
+        return {}; // Offset is negative or out of bounds
     }
 
-    // Adjust size if requested size exceeds available bytes from offset
-    size_t bytesToRead = size;
-    if (offset + bytesToRead > static_cast<size_t>(totalLength)) {
-        bytesToRead = totalLength - offset;
+    // Determine how many bytes to read
+    size_t bytesToRead = 0;
+    if (size < 0) {
+        // Read until the end of the file from the specified offset
+        bytesToRead = static_cast<size_t>(totalLength - offset);
+    } else {
+        bytesToRead = static_cast<size_t>(size);
+        // Adjust size if requested size exceeds available bytes from offset
+        if (offset + static_cast<long>(bytesToRead) > totalLength) {
+            bytesToRead = static_cast<size_t>(totalLength - offset);
+        }
     }
 
     std::vector<uint8_t> content;
     if (bytesToRead > 0) {
         // Seek directly to the target offset from the beginning of the file
-        if (fseek(f, static_cast<long>(offset), SEEK_SET) != 0) {
+        if (fseek(f, offset, SEEK_SET) != 0) {
             fclose(f);
             return {}; // Seek failed
         }
 
         content.resize(bytesToRead);              // Allocate memory ONLY for the requested chunk
-        fread(content.data(), 1, bytesToRead, f); // Read only those specific bytes into memory
+        size_t readBytes = fread(content.data(), 1, bytesToRead, f); // Read bytes into memory
+        if (readBytes != bytesToRead) {
+            content.resize(readBytes); // Trim vector if a short read occurred
+        }
     }
 
     fclose(f); // Free file descriptor resource
@@ -357,153 +368,77 @@ std::vector<uint8_t> FileManager::readFileBytes(const std::string& filename, siz
 }
 
 
-
-
-
-// Method to shift bytes within a file by a given shiftDistance (left or right) in constant memory chunks
-void FileManager::shiftBytes(const std::string& filename, size_t shiftDistance, bool left) {
-    if (shiftDistance == 0) return;
-
-    std::string fullPath = getFullPath(filename);
-    std::string tempPath = fullPath + ".tmp";
-    const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM from OOM crashes
-    size_t currentReadOffset = left ? shiftDistance : 0;
-    bool firstChunk = true;
-
-    // 1. Stream valid data into a temporary file with the applied shift
-    while (true) {
-        std::vector<uint8_t> chunk = readFileBytes(filename, currentReadOffset, CHUNK_SIZE);
-        if (chunk.empty()) {
-            break; // Reached the end of the file stream
-        }
-
-        if (firstChunk) {
-            writeFile(filename + ".tmp", chunk); // Initialize temp file with first chunk
-            firstChunk = false;
-        } else {
-            appendFile(filename + ".tmp", chunk); // Append subsequent chunks sequentially
-        }
-
-        currentReadOffset += chunk.size();
-        if (chunk.size() < CHUNK_SIZE) {
-            break; // Last partial chunk read
-        }
-    }
-
-    // 2. Stream the compacted temporary file back to the original file
-    currentReadOffset = 0;
-    firstChunk = true;
-    while (true) {
-        std::vector<uint8_t> cleanChunk = readFileBytes(filename + ".tmp", currentReadOffset, CHUNK_SIZE);
-        if (cleanChunk.empty()) {
-            break;
-        }
-
-        if (firstChunk) {
-            writeFile(filename, cleanChunk);
-            firstChunk = false;
-        } else {
-            appendFile(filename, cleanChunk);
-        }
-
-        currentReadOffset += cleanChunk.size();
-        if (cleanChunk.size() < CHUNK_SIZE) {
-            break;
-        }
-    }
-
-    // 3. Clean up the temporary file by clearing it out
-    writeFile(filename + ".tmp", std::vector<uint8_t>());
-}
- 
-
 // Method to shift bytes within a file by a given shiftDistance (left or right)
 // within an optional range [startOffset, endOffset]. Pass negative values (-1) to use defaults.
 void FileManager::shiftBytes(const std::string& filename, size_t shiftDistance, bool left, long long startOffset, long long endOffset) {
     if (shiftDistance == 0) return;
 
-    std::string fullPath = getFullPath(filename);
-    std::string tempPath = fullPath + ".tmp";
-    const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM from OOM crashes
+    // Determine total file size using readFileBytes or a helper
+    // (Opening and checking size via a quick read or fseek internally)
+    std::string path = getFullPath(filename);
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open file for shifting: %s", path.c_str());
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long fileSize = ftell(f);
+    fclose(f);
 
-    size_t fileSize = getFileSize(filename);
+    if (fileSize <= 0) return;
 
     // Apply rules: if offset < 0, fallback to defaults (0 for start, fileSize for end)
-    size_t actualStart = (startOffset < 0) ? 0 : static_cast<size_t>(startOffset);
-    size_t actualEnd = (endOffset < 0 || static_cast<size_t>(endOffset) > fileSize) ? fileSize : static_cast<size_t>(endOffset);
+    long actualStart = (startOffset < 0) ? 0 : static_cast<long>(startOffset);
+    long actualEnd = (endOffset < 0 || endOffset > fileSize) ? fileSize : static_cast<long>(endOffset);
 
     if (actualStart >= fileSize || actualStart >= actualEnd) return;
 
-    // 1. Stream data into a temporary file:
-    // - Prefix (0 to actualStart) is copied as-is
-    size_t currentReadOffset = 0;
-    while (currentReadOffset < actualStart) {
-        size_t bytesToRead = std::min(CHUNK_SIZE, actualStart - currentReadOffset);
-        std::vector<uint8_t> chunk = readFileBytes(filename, currentReadOffset, bytesToRead);
-        if (chunk.empty()) break;
+    const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM
 
-        if (currentReadOffset == 0) {
-            writeFile(tempPath, chunk);
-        } else {
-            appendFile(tempPath, chunk);
+    if (left) {
+        // --- SHIFT LEFT (Forward iteration: left-to-right) ---
+        // Move data from (actualStart + shiftDistance) down to actualStart
+        long srcStart = actualStart + static_cast<long>(shiftDistance);
+        if (srcStart > actualEnd) srcStart = actualEnd;
+
+        long currentSrc = srcStart;
+        long currentDst = actualStart;
+
+        while (currentSrc < actualEnd) {
+            size_t bytesToRead = std::min(CHUNK_SIZE, static_cast<size_t>(actualEnd - currentSrc));
+            std::vector<uint8_t> chunk = readFileBytes(filename, currentSrc, bytesToRead);
+            if (chunk.empty()) break;
+
+            if (!writeFile(filename, chunk, currentDst)) {
+                ESP_LOGE(TAG, "Failed to write chunk during left shift");
+                break;
+            }
+
+            currentSrc += chunk.size();
+            currentDst += chunk.size();
         }
-        currentReadOffset += chunk.size();
-    }
+    } else {
+        // --- SHIFT RIGHT (Backward iteration: right-to-left) ---
+        // Move data from actualEnd back to actualStart, shifted right.
+        // We iterate backwards to prevent overwriting unread data.
+        long currentSrc = actualEnd;
 
-    // - Target region [actualStart, actualEnd] with shift applied
-    size_t targetStart = left ? (actualStart + shiftDistance) : actualStart;
-    if (targetStart > actualEnd) targetStart = actualEnd;
+        while (currentSrc > actualStart) {
+            size_t bytesToRead = std::min(CHUNK_SIZE, static_cast<size_t>(currentSrc - actualStart));
+            currentSrc -= bytesToRead;
 
-    currentReadOffset = targetStart;
-    bool firstTargetChunk = (actualStart == 0 && currentReadOffset == 0);
+            std::vector<uint8_t> chunk = readFileBytes(filename, currentSrc, bytesToRead);
+            if (chunk.empty()) break;
 
-    while (currentReadOffset < actualEnd) {
-        size_t bytesToRead = std::min(CHUNK_SIZE, actualEnd - currentReadOffset);
-        std::vector<uint8_t> chunk = readFileBytes(filename, currentReadOffset, bytesToRead);
-        if (chunk.empty()) break;
-
-        if (firstTargetChunk && actualStart == 0) {
-            writeFile(tempPath, chunk);
-            firstTargetChunk = false;
-        } else {
-            appendFile(tempPath, chunk);
+            long targetDst = currentSrc + static_cast<long>(shiftDistance);
+            // Our updated writeFile automatically handles zero-padding if targetDst exceeds fileSize
+            if (!writeFile(filename, chunk, targetDst)) {
+                ESP_LOGE(TAG, "Failed to write chunk during right shift");
+                break;
+            }
         }
-        currentReadOffset += chunk.size();
     }
-
-    // - Suffix (actualEnd to EOF) is copied as-is
-    currentReadOffset = actualEnd;
-    while (true) {
-        std::vector<uint8_t> suffixChunk = readFileBytes(filename, currentReadOffset, CHUNK_SIZE);
-        if (suffixChunk.empty()) break;
-
-        appendFile(tempPath, suffixChunk);
-        currentReadOffset += suffixChunk.size();
-        if (suffixChunk.size() < CHUNK_SIZE) break;
-    }
-
-    // 2. Stream the compacted temporary file back to the original file
-    currentReadOffset = 0;
-    bool firstCleanChunk = true;
-    while (true) {
-        std::vector<uint8_t> cleanChunk = readFileBytes(tempPath, currentReadOffset, CHUNK_SIZE);
-        if (cleanChunk.empty()) break;
-
-        if (firstCleanChunk) {
-            writeFile(filename, cleanChunk);
-            firstCleanChunk = false;
-        } else {
-            appendFile(filename, cleanChunk);
-        }
-
-        currentReadOffset += cleanChunk.size();
-        if (cleanChunk.size() < CHUNK_SIZE) break;
-    }
-
-    // 3. Clean up the temporary file by clearing it out
-    writeFile(tempPath, std::vector<uint8_t>());
 }
-
 
 
 
