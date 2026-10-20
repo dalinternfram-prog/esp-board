@@ -202,7 +202,59 @@ std::vector<uint8_t> fileVector::Pop(int i) {
 }
 
 
+ // Method to modify an existing element's raw byte data by index
+bool fileVector::modify(const std::vector<uint8_t>& data, int i) {
+    // i == -1 means the last one;
+    // if size is not consistent, error, return false;
+    if (!FileManager_) return false;
 
+    std::string jsonPath = fileName + ".json";
+    std::string jsonStr = readTextFile(jsonPath);
+
+    JsonDocument doc;
+    if (deserializeJson(doc, jsonStr) != DeserializationError::Ok) {
+        return false;
+    }
+
+    JsonArray elements = doc["elements"].as<JsonArray>();
+    size_t n = elements.size();
+    if (n == 0) {
+        return false;
+    }
+
+    // Convert negative index (e.g., -1) to positive index
+    if (i < 0) {
+        i = static_cast<int>(n) + i;
+    }
+
+    // Validate index bounds
+    if (i < 0 || i >= static_cast<int>(n)) {
+        return false;
+    }
+
+    JsonObject target = elements[i];
+    size_t byteSize = target["byteSize"].as<size_t>();
+
+    // Check if the new data size matches the existing element's byte size
+    if (data.size() != byteSize) {
+        return false;
+    }
+
+    size_t offset = target["offset"].as<size_t>();
+
+    // 1. Write the new byte data into the binary file at the exact offset
+    FileManager_->writeFile(fileName, data, offset);
+
+    // 2. Optionally update the timestamp to reflect when it was modified
+    target["AddingTime"] = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+
+    // 3. Save updated JSON metadata
+    std::string updatedJson;
+    serializeJson(doc, updatedJson);
+    FileManager_->writeFile(jsonPath, updatedJson, 0);
+
+    return true;
+}
 
 
 } // namespace file

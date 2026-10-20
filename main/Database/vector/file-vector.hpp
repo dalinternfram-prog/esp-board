@@ -67,5 +67,16 @@ public:
      * @return std::vector<uint8_t> The removed element's raw byte data, or an empty vector on failure/out-of-bounds.
      */
     std::vector<uint8_t> Pop(int i = -1);
+
+
+    /**
+     * @brief Modifies the raw byte data of an existing element at the specified index.
+     * 
+     * @param data The new byte data to write. Must be identical in size to the existing element.
+     * @param i The index of the element to modify (supports negative indices, e.g., -1 for the last element).
+     * @return true if the modification succeeded, or false if the index is out of bounds, 
+     *         the file manager is unavailable, or the new data size does not match the existing element's size.
+     */
+    bool modify(const std::vector<uint8_t>& data, int i=-1);
 };
 }
