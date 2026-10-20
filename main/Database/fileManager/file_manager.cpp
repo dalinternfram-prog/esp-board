@@ -417,7 +417,92 @@ void FileManager::shiftBytes(const std::string& filename, size_t shiftDistance, 
 }
  
 
+// Method to shift bytes within a file by a given shiftDistance (left or right)
+// within an optional range [startOffset, endOffset]. Pass negative values (-1) to use defaults.
+void FileManager::shiftBytes(const std::string& filename, size_t shiftDistance, bool left, long long startOffset, long long endOffset) {
+    if (shiftDistance == 0) return;
 
+    std::string fullPath = getFullPath(filename);
+    std::string tempPath = fullPath + ".tmp";
+    const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM from OOM crashes
+
+    size_t fileSize = getFileSize(filename);
+
+    // Apply rules: if offset < 0, fallback to defaults (0 for start, fileSize for end)
+    size_t actualStart = (startOffset < 0) ? 0 : static_cast<size_t>(startOffset);
+    size_t actualEnd = (endOffset < 0 || static_cast<size_t>(endOffset) > fileSize) ? fileSize : static_cast<size_t>(endOffset);
+
+    if (actualStart >= fileSize || actualStart >= actualEnd) return;
+
+    // 1. Stream data into a temporary file:
+    // - Prefix (0 to actualStart) is copied as-is
+    size_t currentReadOffset = 0;
+    while (currentReadOffset < actualStart) {
+        size_t bytesToRead = std::min(CHUNK_SIZE, actualStart - currentReadOffset);
+        std::vector<uint8_t> chunk = readFileBytes(filename, currentReadOffset, bytesToRead);
+        if (chunk.empty()) break;
+
+        if (currentReadOffset == 0) {
+            writeFile(tempPath, chunk);
+        } else {
+            appendFile(tempPath, chunk);
+        }
+        currentReadOffset += chunk.size();
+    }
+
+    // - Target region [actualStart, actualEnd] with shift applied
+    size_t targetStart = left ? (actualStart + shiftDistance) : actualStart;
+    if (targetStart > actualEnd) targetStart = actualEnd;
+
+    currentReadOffset = targetStart;
+    bool firstTargetChunk = (actualStart == 0 && currentReadOffset == 0);
+
+    while (currentReadOffset < actualEnd) {
+        size_t bytesToRead = std::min(CHUNK_SIZE, actualEnd - currentReadOffset);
+        std::vector<uint8_t> chunk = readFileBytes(filename, currentReadOffset, bytesToRead);
+        if (chunk.empty()) break;
+
+        if (firstTargetChunk && actualStart == 0) {
+            writeFile(tempPath, chunk);
+            firstTargetChunk = false;
+        } else {
+            appendFile(tempPath, chunk);
+        }
+        currentReadOffset += chunk.size();
+    }
+
+    // - Suffix (actualEnd to EOF) is copied as-is
+    currentReadOffset = actualEnd;
+    while (true) {
+        std::vector<uint8_t> suffixChunk = readFileBytes(filename, currentReadOffset, CHUNK_SIZE);
+        if (suffixChunk.empty()) break;
+
+        appendFile(tempPath, suffixChunk);
+        currentReadOffset += suffixChunk.size();
+        if (suffixChunk.size() < CHUNK_SIZE) break;
+    }
+
+    // 2. Stream the compacted temporary file back to the original file
+    currentReadOffset = 0;
+    bool firstCleanChunk = true;
+    while (true) {
+        std::vector<uint8_t> cleanChunk = readFileBytes(tempPath, currentReadOffset, CHUNK_SIZE);
+        if (cleanChunk.empty()) break;
+
+        if (firstCleanChunk) {
+            writeFile(filename, cleanChunk);
+            firstCleanChunk = false;
+        } else {
+            appendFile(filename, cleanChunk);
+        }
+
+        currentReadOffset += cleanChunk.size();
+        if (cleanChunk.size() < CHUNK_SIZE) break;
+    }
+
+    // 3. Clean up the temporary file by clearing it out
+    writeFile(tempPath, std::vector<uint8_t>());
+}
 
 
 

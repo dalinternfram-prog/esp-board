@@ -22,6 +22,7 @@ size_t byteSize;
 int offset;
 uint32_t AddingTime; 
 };
+
 protected:
 std::shared_ptr<FileManager>FileManager_;
 std::string fileName{};
@@ -45,36 +46,6 @@ std::vector<uint8_t> Pop();
 
  std::vector<uint8_t> PopFront();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
 
 
     };

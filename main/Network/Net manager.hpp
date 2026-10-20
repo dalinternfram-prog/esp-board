@@ -9,7 +9,8 @@
 
 #include "file_manager.hpp"
 
-
+#include "ArduinoJson.h"
+#include "ArduinoJson.hpp"
 namespace Network {
 static const char* TAG = "KCP_CLIENT";
 
