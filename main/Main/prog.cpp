@@ -37,16 +37,14 @@ const char* host ="10.165.11.156";
  
 
 void app_run_loop( 
-     std::shared_ptr<NvsManager> nvsManager,
-     std::shared_ptr<FileManager> fileManager,
+     std::shared_ptr<NvsManager> nvsManager, 
      std::shared_ptr<FirmwareSwitch> firmwareSwitch
 ){ 
     //* first: we check wifi state;
     // * we try to connect to our wifi;
    //* scan nvs to find the candicate;
 
-
-   WiFiManager::getInstance().begin(); 
+   //WiFiManager::getInstance().begin(); 
 
 //      std::shared_ptr<wifi_state> wifi_state_class=std::make_shared<wifi_state>();
 //      std::shared_ptr<WifiProvision> WifiProvision_class=std::make_shared<WifiProvision>();

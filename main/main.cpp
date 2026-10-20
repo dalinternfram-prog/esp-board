@@ -15,7 +15,8 @@
 #include <memory>
 #include "file_manager.hpp"
 #include "firmware_switch.hpp"
-
+#include "wifi/shared.hpp"
+#include "Net manager.hpp"
 // CHANGED: Added const to fix "ISO C++ forbids converting a string constant to 'char*'" warning
 static const char *TAG = "app main";
 
@@ -26,8 +27,7 @@ static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
 
 void app_run_loop( 
-     std::shared_ptr<NvsManager> nvsManager,
-     std::shared_ptr<FileManager> fileManager,
+     std::shared_ptr<NvsManager> nvsManager, 
      std::shared_ptr<FirmwareSwitch> firmwareSwitch
 );
 // 按键回调函数
@@ -259,18 +259,20 @@ extern "C" void app_main()
  
 
 std::shared_ptr<NvsManager> NvsManager_class=std::make_shared<NvsManager>();
-
-std::shared_ptr<FileManager> FileManager_class=std::make_shared<FileManager>();
+ 
 
 std::shared_ptr<FirmwareSwitch> FirmwareSwitch_class=std::make_shared<FirmwareSwitch>();
 
 
 NvsManager_class->init(); 
-//wifi::initialize();
-FileManager_class->init();
 FirmwareSwitch_class->init();
 
+FileManager::init();
 
- app_run_loop( NvsManager_class,FileManager_class,FirmwareSwitch_class);
+
+wifi::init();
+
+Network::init(222);
+ app_run_loop( NvsManager_class, FirmwareSwitch_class);
 
 }
