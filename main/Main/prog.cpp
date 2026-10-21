@@ -17,6 +17,7 @@
 #include "firmware_switch.hpp" 
 #include "WiFiManager.hpp" 
 #include "Opus.hpp"
+#include "Lc3.hpp"
 //**
 // 
 // idf.py monitor
@@ -83,58 +84,58 @@ void app_run_loop(
 
 // bool success2=  s_NetworkManager->try_connectWithServer(   host,   port);
 
-std::shared_ptr<Hardware::AudioCaptureDriver> s_AudioCaptureDriver = std::make_shared<Hardware::AudioCaptureDriver>( );
+// std::shared_ptr<Hardware::AudioCaptureDriver> s_AudioCaptureDriver = std::make_shared<Hardware::AudioCaptureDriver>( );
 
-std::shared_ptr< SimpleOpusEncoder> s_SimpleOpusEncoder = std::make_shared< SimpleOpusEncoder>(
-     SimpleOpusEncoder::Config{macroPhone::argument::sample_rate,macroPhone::argument::channel_count,macroPhone::argument::target_frame_duration_ms} );
-ret=s_SimpleOpusEncoder->init();
-if(ret!=ESP_OK) ESP_LOGE(TAG, "s_SimpleOpusEncoder->init(); error");
+// std::shared_ptr< SimpleLC3Encoder> s_SimpleLC3Encoder = std::make_shared< SimpleLC3Encoder>(
+//      SimpleLC3Encoder::Config{macroPhone::argument::sample_rate,macroPhone::argument::channel_count,macroPhone::argument::target_frame_duration_ms} );
+// ret=s_SimpleLC3Encoder->init();
+// if(ret!=ESP_OK) ESP_LOGE(TAG, "s_SimpleLC3Encoder->init(); error");
 
  
 
-    while (true) {
-        // 2. Read new PCM frame from hardware
-         ret = s_AudioCaptureDriver->readSamples();
-        if (ret == ESP_OK) {
-            // 3. Get modern C++ std::span pointing to the raw PSRAM data
-           auto raw_pcm = s_AudioCaptureDriver->getFrameBuffer();
-            auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm);
+//     while (true) {
+//         // 2. Read new PCM frame from hardware
+//          ret = s_AudioCaptureDriver->readSamples();
+//         if (ret == ESP_OK) {
+//             // 3. Get modern C++ std::span pointing to the raw PSRAM data
+//            auto raw_pcm = s_AudioCaptureDriver->getFrameBuffer();
+//             auto compressed_pcm = s_SimpleLC3Encoder->encode(raw_pcm);
 
-         //  ESP_LOGI("++++++++++++","auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm); success" );
-            // Print first sample value to verify real PCM data is being captured
-    // if (!audio_span.empty()) {
-    //     ESP_LOGI("++++++++++++", "Captured %zu samples. First sample: %d", 
-    //              audio_span.size(), audio_span[0]);
-    // }
+//          // ESP_LOGI("++++++++++++","auto compressed_pcm = s_SimpleLC3Encoder->encode(raw_pcm); success  size = %u",compressed_pcm.size() );
+//             // Print first sample value to verify real PCM data is being captured
+//     // if (!audio_span.empty()) {
+//     //     ESP_LOGI("++++++++++++", "Captured %zu samples. First sample: %d", 
+//     //              audio_span.size(), audio_span[0]);
+//     // }
 
-int16_t max_sample = 0;
-    for (int16_t sample : raw_pcm) {
-        if (std::abs(sample) > max_sample) {
-            max_sample = std::abs(sample);
-        }
-    }
-    ESP_LOGI("MicTest", "Frame Peak: %d", max_sample);
+// int16_t max_sample = 0;
+//     for (int16_t sample : raw_pcm) {
+//         if (std::abs(sample) > max_sample) {
+//             max_sample = std::abs(sample);
+//         }
+//     }
+//     ESP_LOGI("MicTest", "Frame Peak: %d", max_sample);
 
-    // if (!audio_span.empty()) {
-    //     // Print sample value to observe peak changes
-    //     ESP_LOGI("MicTest", "Sample[0]: %d", audio_span[0]);
-    // }
-// Size in elements (returns 1024)
-    std::size_t element_count = raw_pcm.size(); 
+//     // if (!audio_span.empty()) {
+//     //     // Print sample value to observe peak changes
+//     //     ESP_LOGI("MicTest", "Sample[0]: %d", audio_span[0]);
+//     // }
+// // Size in elements (returns 1024)
+//     std::size_t element_count = raw_pcm.size(); 
 
-    // Size in raw bytes for network transmission (returns 2048)
-    std::size_t byte_count = raw_pcm.size()*sizeof(int16_t); 
+//     // Size in raw bytes for network transmission (returns 2048)
+//     std::size_t byte_count = raw_pcm.size()*sizeof(int16_t); 
 
-   ESP_LOGI("BufferCheck", "Elements: %zu | Total Bytes: %zu", element_count, byte_count);
-        } 
+//    ESP_LOGI("BufferCheck", "Elements: %zu | Total Bytes: %zu", element_count, byte_count);
+//         } 
         
         
-        else {
-            ESP_LOGW("++++++++++++", "Failed to read audio samples, retrying...");
-        }
+//         else {
+//             ESP_LOGW("++++++++++++", "Failed to read audio samples, retrying...");
+//         }
 
-        vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
-    }
+//         vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
+//     }
 
 
 
@@ -144,3 +145,9 @@ int16_t max_sample = 0;
 
 
 } 
+
+
+
+
+
+ 

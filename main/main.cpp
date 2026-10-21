@@ -1,4 +1,7 @@
+  #define MainRun
   
+  #if defined (MainRun)
+#include "Opus.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -270,148 +273,512 @@ FirmwareSwitch_class->init();
 FileManager::init();
 
 
-// wifi::init();
+wifi::init();
 
-// Network::init(222);
+Network::init(222);
  app_run_loop( NvsManager_class, FirmwareSwitch_class);
 
+   // xTaskCreate(opus_class_test_task, "opus_class_test_task", 32768, NULL, 5, NULL);
 }
 
+#endif
+#if defined (LC3Test)
 
-// /**
-//  * @file main.c
-//  * @brief ESP WiFi Manager - Web UI Example
-//  *
-//  * This example demonstrates:
-//  * - WiFi Manager with embedded Web UI
-//  * - Modern responsive interface accessible at device IP
-//  * - Captive portal for initial setup
-//  * - mDNS for easy access (esp32-xxx.local)
-//  */
+ #include <stdio.h>
+#include <vector>
+#include <cmath>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-// #include <stdio.h>
-// #include <string.h>
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/task.h"
-// #include "esp_log.h"
-// #include "nvs_flash.h"
-// #include "esp_wifi_manager.h"
-// #include "esp_bus.h"
+// Include the LC3 API safely in C++
+extern "C" {
+    #include "lc3.h"
+}
 
-// static const char *TAG = "wifi_webui_example";
+static const char* TAG = "LC3_TEST";
 
-// /**
-//  * @brief Callback for WiFi events
-//  */
-//  extern "C" {
-//   void on_wifi_event(const char *event, const void *data, size_t len, void *ctx)
-// {
-//     if (strcmp(event, WIFI_EVT(WIFI_MGR_EVT_CONNECTED)) == 0) {
-//         const wifi_connected_t *info = (const wifi_connected_t *)data;
-//         ESP_LOGI(TAG, "+++++++++++++++++++++++++++Connected to %s", info->ssid);
-//     } else if (strcmp(event, WIFI_EVT(WIFI_MGR_EVT_DISCONNECTED)) == 0) {
-//         const wifi_disconnected_t *info = (const wifi_disconnected_t *)data;
-//         ESP_LOGW(TAG, "+++++++++++++++++++++++++++Disconnected from %s (reason: %d)", info->ssid, info->reason);
-//     } else if (strcmp(event, WIFI_EVT(WIFI_MGR_EVT_GOT_IP)) == 0) {
-//         wifi_status_t status;
-//         if (wifi_manager_get_status(&status) == ESP_OK) {
-//             ESP_LOGI(TAG, "+++++++++++++++++++++++++++Got IP: %s", status.ip);
-//             ESP_LOGI(TAG, "+++++++++++++++++++++++++++Web UI: http://%s/", status.ip);
-//             if (status.hostname[0]) {
-//                 ESP_LOGI(TAG, "+++++++++++++++++++++++++++mDNS: http://%s.local/", status.hostname);
-//             }
-//         }
-//         }
-// }
-//  }
-// extern "C" void app_main(void)
-// {
-//     // Initialize NVS
-//     esp_err_t ret = nvs_flash_init();
-//     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-//         ESP_ERROR_CHECK(nvs_flash_erase());
-//         ret = nvs_flash_init();
-//     }
-//     ESP_ERROR_CHECK(ret);
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "Starting LC3 codec test...");
 
-//     ESP_LOGI(TAG, "==============================================");
-//     ESP_LOGI(TAG, "  ESP WiFi Manager - Web UI Example");
-//     ESP_LOGI(TAG, "==============================================");
+    // 1. Configuration parameters
+    int sample_rate = 16000;       // 16 kHz sample rate
+    int frame_duration_us = 10000; // 10 ms = 10000 microseconds
+    
+    // Calculate samples per frame: (16000 * 0.010) = 160 samples
+    int samples_per_frame = (sample_rate * (frame_duration_us / 1000)) / 1000;
 
-//     // Initialize esp_bus
-//     ESP_ERROR_CHECK(esp_bus_init());
+    // 2. Initialize Encoder memory (uses microseconds!)
+    int enc_size = lc3_encoder_size(frame_duration_us, sample_rate);
+    std::vector<uint8_t> enc_mem(enc_size);
+    // Parameters: frame_us, hertz, epmr (0), buffer memory
+    lc3_encoder_t encoder = lc3_setup_encoder(frame_duration_us, sample_rate, 0, enc_mem.data());
 
-//     // Subscribe to WiFi events
-//     esp_bus_sub("wifi_mgr_evt_connected", on_wifi_event, NULL);
-//     esp_bus_sub(WIFI_EVT(WIFI_MGR_EVT_DISCONNECTED), on_wifi_event, NULL);
-//     esp_bus_sub(WIFI_EVT(WIFI_MGR_EVT_GOT_IP), on_wifi_event, NULL);
+    if (!encoder) {
+        ESP_LOGE(TAG, "Failed to setup LC3 encoder!");
+        return;
+    }
+    ESP_LOGI(TAG, "Encoder setup successful!");
 
-//     // Initialize WiFi Manager with Web UI enabled
-//     wifi_manager_config_t config = {
-//         .max_retry_per_network = 3,
-//         .retry_interval_ms = 5000,
-//         .auto_reconnect = true,
+    // 3. Initialize Decoder memory
+    int dec_size = lc3_decoder_size(frame_duration_us, sample_rate);
+    std::vector<uint8_t> dec_mem(dec_size);
+lc3_decoder_t decoder = lc3_setup_decoder(frame_duration_us, sample_rate, 0, dec_mem.data());
 
-//         .default_ap = {
-//             .ssid = "ESP32-Setup-{id}",
-//             .password = "",
-//             .channel = 0,
-//             .max_connections = 4,
-//             .ip = "192.168.4.1",
-//             .netmask = "255.255.255.0",
-//             .gateway = "192.168.4.1",
-//             .dhcp_start = "192.168.4.2",
-//             .dhcp_end = "192.168.4.20",
-//         },
-//         .enable_captive_portal = true,
-//         .stop_ap_on_connect = true,
+    if (!decoder) {
+        ESP_LOGE(TAG, "Failed to setup LC3 decoder!");
+        return;
+    }
+    ESP_LOGI(TAG, "Decoder setup successful!");
 
-//         .http = {
-//             .enable = true,
-//             .api_base_path = "/api/wifi",
-//         },
+    // 4. Generate hardcoded PCM input (a tiny 440 Hz tone sine wave for 10ms)
+    std::vector<int16_t> pcm_in(samples_per_frame);
+    for (int i = 0; i < samples_per_frame; i++) {
+        float t = (float)i / sample_rate;
+        pcm_in[i] = (int16_t)(10000.0f * sinf(2.0f * M_PI * 440.0f * t));
+    }
 
-//         // mDNS for easy access
-//         .mdns = {
-//             .enable = true,
-//             .hostname = "esp32-{id}",
-//             .instance_name = "ESP32 WiFi Manager",
-//         },
+    // 5. Allocate output bitstream buffer (LC3 compressed data)
+    std::vector<uint8_t> bitstream(400);
+    int target_num_bytes = 40; // Target compressed size in bytes
 
-//         // Web UI is auto-enabled via CONFIG_WIFI_MGR_ENABLE_WEBUI
-//     };
+    // 6. Test Encoding
+    ESP_LOGI(TAG, "Encoding %d PCM samples into %d bytes...", samples_per_frame, target_num_bytes);
+    int err = lc3_encode(encoder, LC3_PCM_FORMAT_S16, pcm_in.data(), 1, target_num_bytes, bitstream.data());
+    
+    if (err != 0) {
+        ESP_LOGE(TAG, "lc3_encode failed with error code: %d", err);
+        return;
+    }
+    ESP_LOGI(TAG, "Encoding successful!");
 
-//     ret = wifi_manager_init(&config);
-//     if (ret != ESP_OK) {
-//         ESP_LOGE(TAG, "Failed to init WiFi Manager: %s", esp_err_to_name(ret));
-//         return;
-//     }
+    // 7. Test Decoding back to PCM
+    std::vector<int16_t> pcm_out(samples_per_frame);
+    ESP_LOGI(TAG, "Decoding bitstream back to PCM...");
+    
+    err = lc3_decode(decoder, bitstream.data(), target_num_bytes, LC3_PCM_FORMAT_S16, pcm_out.data(), 1);
+    
+    if (err != 0) {
+        ESP_LOGE(TAG, "lc3_decode failed with error code: %d", err);
+        return;
+    }
 
-//     ESP_LOGI(TAG, "");
-//     ESP_LOGI(TAG, "WiFi Manager initialized with Web UI");
-//     ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "Decoding successful! First 5 decoded samples: %d, %d, %d, %d, %d",
+             pcm_out[0], pcm_out[1], pcm_out[2], pcm_out[3], pcm_out[4]);
 
-//     // Wait for connection
-//     ret = wifi_manager_wait_connected(30000);
+    ESP_LOGI(TAG, "LC3 pipeline test passed completely!");
+}
 
-//     if (ret == ESP_OK) {
-//         wifi_status_t status;
-//         wifi_manager_get_status(&status);
-//         ESP_LOGI(TAG, "Connected! Access Web UI at:");
-//         ESP_LOGI(TAG, "  http://%s/", status.ip);
-//         if (status.hostname[0]) {
-//             ESP_LOGI(TAG, "  http://%s.local/", status.hostname);
-//         }
-//     } else {
-//         ESP_LOGW(TAG, "No saved networks. Starting AP mode...");
-//         ESP_LOGI(TAG, "");
-//         ESP_LOGI(TAG, "Connect to WiFi: ESP32-Setup-XXXXXX");
-//         ESP_LOGI(TAG, "Open http://192.168.4.1/ to configure");
-//         ESP_LOGI(TAG, "");
-//     }
+#endif
 
-//     // Main loop
-//     while (1) {
-//         vTaskDelay(pdMS_TO_TICKS(10000));
-//     }
-// }
+
+
+
+#if defined (OpusTest)
+
+
+
+ #include <stdio.h>
+#include <vector>
+#include <cmath>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+extern "C" {
+    #include "esp_opus_dec.h"
+}
+
+static const char* TAG = "OPUS_TEST";
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "Starting Opus decoder test...");
+
+    esp_opus_dec_cfg_t cfg = ESP_OPUS_DEC_CONFIG_DEFAULT();
+    cfg.sample_rate = ESP_AUDIO_SAMPLE_RATE_16K;
+    cfg.channel = ESP_AUDIO_MONO;
+    cfg.frame_duration = ESP_OPUS_DEC_FRAME_DURATION_10_MS;
+
+    void* dec_handle = nullptr;
+    esp_audio_err_t err = esp_opus_dec_open(&cfg, sizeof(cfg), &dec_handle);
+    if (err != ESP_AUDIO_ERR_OK || !dec_handle) {
+        ESP_LOGE(TAG, "esp_opus_dec_open failed: %d", err);
+        return;
+    }
+    ESP_LOGI(TAG, "Opus decoder opened successfully!");
+
+    std::vector<uint8_t> dummy_bitstream(40, 0);
+    std::vector<int16_t> pcm_out(960);
+
+    esp_audio_dec_in_raw_t raw = {
+        .buffer = dummy_bitstream.data(),
+        .len = (uint32_t)dummy_bitstream.size()
+    };
+
+    esp_audio_dec_out_frame_t frame = {
+        .buffer = (uint8_t*)pcm_out.data(),
+        .len = (uint32_t)(pcm_out.size() * sizeof(int16_t))
+    };
+
+    esp_audio_dec_info_t info = {};
+
+    err = esp_opus_dec_decode(dec_handle, &raw, &frame, &info);
+    if (err != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "esp_opus_dec_decode failed: %d", err);
+    } else {
+        ESP_LOGI(TAG, "Opus decode API executed successfully! Output bytes: %lu", (unsigned long)frame.len);
+    }
+
+    esp_opus_dec_close(dec_handle);
+    ESP_LOGI(TAG, "Opus test complete!");
+}
+#endif
+
+
+
+
+
+
+#if defined (OpusClassTest)
+ #include <stdio.h>
+#include <vector>
+#include <cmath>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "Opus.hpp" // Include your SimpleOpusEncoder class header
+
+static const char* TAG = "OPUS_ENCODER_CLASS_TEST";
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "Starting SimpleOpusEncoder class test...");
+
+    // 1. Configure the encoder settings
+    SimpleOpusEncoder::Config config;
+    config.sample_rate = 16000;         // 16 kHz sample rate
+    config.channels = 1;                // Mono channel
+    config.frame_duration_ms = 10;      // 10 ms frame duration
+
+    // 2. Instantiate the wrapper object
+    SimpleOpusEncoder encoder(config);
+
+    // 3. Initialize the encoder instance
+    if (encoder.init() != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize SimpleOpusEncoder!");
+        return;
+    }
+    ESP_LOGI(TAG, "SimpleOpusEncoder initialized successfully!");
+
+    // 4. Calculate expected samples per channel based on sample rate and frame duration
+    // (16000 Hz * 0.010 s) = 160 samples per channel
+    size_t samples_per_channel = (config.sample_rate * config.frame_duration_ms) / 1000;
+    size_t total_samples = samples_per_channel * config.channels;
+
+    // 5. Generate hardcoded PCM input (a 440 Hz sine wave for 10ms)
+    std::vector<int16_t> pcm_in(total_samples);
+    for (size_t i = 0; i < total_samples; i++) {
+        float t = (float)i / config.sample_rate;
+        pcm_in[i] = (int16_t)(10000.0f * sinf(2.0f * M_PI * 440.0f * t));
+    }
+
+    // 6. Test vector-based encode method (passing maximum output size buffer)
+    ESP_LOGI(TAG, "Encoding %zu PCM samples...", pcm_in.size());
+    std::vector<uint8_t> compressed_data = encoder.encode(pcm_in, 1512);
+
+    if (compressed_data.empty()) {
+        ESP_LOGE(TAG, "Encoding failed or returned empty payload!");
+    } else {
+        ESP_LOGI(TAG, "Encoding successful! Compressed payload size: %zu bytes", compressed_data.size());
+        
+        // Print first few bytes of the compressed Opus bitstream payload
+        ESP_LOGI(TAG, "First 5 compressed bytes: 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X",
+                 compressed_data[0],
+                 compressed_data.size() > 1 ? compressed_data[1] : 0,
+                 compressed_data.size() > 2 ? compressed_data[2] : 0,
+                 compressed_data.size() > 3 ? compressed_data[3] : 0,
+                 compressed_data.size() > 4 ? compressed_data[4] : 0);
+    }
+
+    // 7. Clean up (the destructor will also automatically invoke deinit() when going out of scope)
+    encoder.deinit();
+    ESP_LOGI(TAG, "SimpleOpusEncoder class test completed cleanly!");
+}
+#endif
+
+
+
+
+
+
+#if defined (OpusEncodeTestSuccess)
+
+#include <stdio.h>
+#include <vector>
+#include <cmath>
+#include <cstring>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+extern "C" {
+    #include "esp_audio_enc.h"
+    #include "esp_audio_enc_default.h"
+    #include "esp_opus_enc.h"
+}
+
+static const char* TAG = "OPUS_ENC_TEST";
+
+static void opus_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting Opus test with massive 32KB stack...");
+
+    esp_audio_enc_register_default();
+
+    static esp_opus_enc_config_t opus_cfg = {
+        .sample_rate = 16000,
+        .channel = 1,
+        .bits_per_sample = 16,
+        .bitrate = 24000,
+        .frame_duration = ESP_OPUS_ENC_FRAME_DURATION_10_MS,
+        .application_mode = ESP_OPUS_ENC_APPLICATION_VOIP,
+        .complexity = 3,
+        .enable_fec = false,
+        .enable_dtx = false,
+        .enable_vbr = true
+    };
+
+    esp_audio_enc_config_t cfg = {
+        .type = ESP_AUDIO_TYPE_OPUS,
+        .cfg = &opus_cfg,
+        .cfg_sz = sizeof(opus_cfg)
+    };
+
+    esp_audio_enc_handle_t enc_handle = NULL;
+    if (esp_audio_enc_open(&cfg, &enc_handle) != ESP_AUDIO_ERR_OK || !enc_handle) {
+        ESP_LOGE(TAG, "Open failed");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    int in_size = 0, out_size = 0;
+    esp_audio_enc_get_frame_size(enc_handle, &in_size, &out_size);
+
+    int samples = in_size / sizeof(int16_t);
+    std::vector<int16_t> pcm_in(samples);
+    for (int i = 0; i < samples; i++) {
+        float t = (float)i / 16000.0f;
+        pcm_in[i] = (int16_t)(8000.0f * sinf(2.0f * 3.14159f * 440.0f * t));
+    }
+
+    std::vector<uint8_t> bitstream(out_size, 0);
+
+    esp_audio_enc_in_frame_t in_frame = {};
+    in_frame.buffer = (uint8_t*)pcm_in.data();
+    in_frame.len = (uint32_t)in_size;
+
+    esp_audio_enc_out_frame_t out_frame = {};
+    out_frame.buffer = bitstream.data();
+    out_frame.len = (uint32_t)out_size;
+
+    ESP_LOGI(TAG, "Executing encoding process...");
+    if (esp_audio_enc_process(enc_handle, &in_frame, &out_frame) == ESP_AUDIO_ERR_OK) {
+        ESP_LOGI(TAG, "SUCCESS! Encoded bytes: %lu", (unsigned long)out_frame.encoded_bytes);
+    } else {
+        ESP_LOGE(TAG, "Encoding process failed");
+    }
+
+    ESP_LOGI(TAG, "Test completed cleanly!");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started...");
+    // Bumped stack size to 32768 (32 KB) to accommodate Opus's heavy internal stack usage
+    xTaskCreate(opus_test_task, "opus_test_task", 32768, NULL, 5, NULL);
+}
+#endif
+
+
+
+ #if defined (OpusEncodeTest)
+
+#include <stdio.h>
+#include <vector>
+#include <cmath>
+#include <cstring>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+extern "C" {
+    #include "esp_audio_enc.h"
+    #include "esp_audio_enc_default.h"
+    #include "esp_opus_enc.h"
+}
+
+static const char* TAG = "OPUS_ENC_TEST";
+
+static void opus_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting Opus test with static configuration and correct close syntax...");
+
+    esp_audio_enc_register_default();
+
+    static esp_opus_enc_config_t opus_cfg = {
+        .sample_rate = 16000,
+        .channel = 1,
+        .bits_per_sample = 16,
+        .bitrate = 24000,
+        .frame_duration = ESP_OPUS_ENC_FRAME_DURATION_10_MS,
+        .application_mode = ESP_OPUS_ENC_APPLICATION_VOIP,
+        .complexity = 3,
+        .enable_fec = false,
+        .enable_dtx = false,
+        .enable_vbr = true
+    };
+
+    static esp_audio_enc_config_t cfg = {
+        .type = ESP_AUDIO_TYPE_OPUS,
+        .cfg = &opus_cfg,
+        .cfg_sz = sizeof(opus_cfg)
+    };
+
+    esp_audio_enc_handle_t enc_handle = NULL;
+    if (esp_audio_enc_open(&cfg, &enc_handle) != ESP_AUDIO_ERR_OK || !enc_handle) {
+        ESP_LOGE(TAG, "Open failed");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    int in_size = 0, out_size = 0;
+    esp_audio_enc_get_frame_size(enc_handle, &in_size, &out_size);
+
+    int samples = in_size / sizeof(int16_t);
+    std::vector<int16_t> pcm_in(samples);
+    for (int i = 0; i < samples; i++) {
+        float t = (float)i / 16000.0f;
+        pcm_in[i] = (int16_t)(8000.0f * sinf(2.0f * 3.14159f * 440.0f * t));
+    }
+
+    std::vector<uint8_t> bitstream(out_size, 0);
+
+    esp_audio_enc_in_frame_t in_frame = {};
+    in_frame.buffer = (uint8_t*)pcm_in.data();
+    in_frame.len = (uint32_t)in_size;
+
+    esp_audio_enc_out_frame_t out_frame = {};
+    out_frame.buffer = bitstream.data();
+    out_frame.len = (uint32_t)out_size;
+
+    ESP_LOGI(TAG, "Executing encoding process...");
+    if (esp_audio_enc_process(enc_handle, &in_frame, &out_frame) == ESP_AUDIO_ERR_OK) {
+        ESP_LOGI(TAG, "SUCCESS! Encoded bytes: %lu", (unsigned long)out_frame.encoded_bytes);
+    } else {
+        ESP_LOGE(TAG, "Encoding process failed");
+    }
+
+    // Call close as a void function now that config pointers are static and stable
+    ESP_LOGI(TAG, "Closing encoder instance...");
+    esp_audio_enc_close(enc_handle);
+    ESP_LOGI(TAG, "Encoder closed successfully!");
+
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started...");
+    xTaskCreate(opus_test_task, "opus_test_task", 32768, NULL, 5, NULL);
+}
+#endif
+
+
+
+
+
+
+
+
+#if defined (OpusEncodeClassTest) 
+
+#include <stdio.h>
+#include <vector>
+#include <cmath>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// Include your custom C++ class header
+#include "Opus.hpp"
+
+extern "C" {
+    #include "esp_audio_enc_default.h" // Required to register backend codecs into the registry framework
+}
+
+static const char* TAG = "OPUS_CLASS_TEST";
+
+static void opus_class_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting SimpleOpusEncoder class test task...");
+
+    // 1. CRITICAL: Register default audio codecs into Espressif's common registry table
+    esp_audio_err_t reg_err = esp_audio_enc_register_default();
+    if (reg_err != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "Failed to register default audio encoders: 0x%x", reg_err);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 2. Configure the encoder settings matching your struct fields
+    SimpleOpusEncoder::Config config;
+    config.sample_rate = 16000;
+    config.channels = 1;
+    config.frame_duration_ms = 10; // 10ms frame duration
+
+    // 3. Instantiate your wrapper class
+    SimpleOpusEncoder encoder(config);
+
+    // 4. Initialize the encoder (this will open the handle and query frame sizes)
+    if (encoder.init() != ESP_OK) {
+        ESP_LOGE(TAG, "SimpleOpusEncoder initialization failed!");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 5. Calculate exact sample count expected by your class validation check:
+    // formula used in your class: (sample_rate * frame_duration_ms) / 1000 * channels
+    size_t expected_samples = (config.sample_rate * config.frame_duration_ms) / 1000 * config.channels;
+    
+    ESP_LOGI(TAG, "Generating %zu PCM samples for encoding...", expected_samples);
+    std::vector<int16_t> pcm_samples(expected_samples);
+    
+    // Fill with a real 440Hz sine wave signal
+    for (size_t i = 0; i < expected_samples; i++) {
+        float t = (float)i / (float)config.sample_rate;
+        pcm_samples[i] = (int16_t)(8000.0f * sinf(2.0f * 3.14159f * 440.0f * t));
+    }
+
+    // 6. Test encoding using the vector overload method
+    // Provide a safe maximum output buffer size (e.g., 512 bytes)
+    uint32_t max_out_size = 512;
+    ESP_LOGI(TAG, "Calling encoder.encode(...) vector method...");
+    
+    std::vector<uint8_t> compressed_data = encoder.encode(pcm_samples, max_out_size);
+
+    if (!compressed_data.empty()) {
+        ESP_LOGI(TAG, "SUCCESS! Encoded Opus packet size: %u bytes", (unsigned int)compressed_data.size());
+    } else {
+        ESP_LOGE(TAG, "Encoding failed or returned empty payload.");
+    }
+
+    // 7. Clean up (destructor will also automatically call deinit when encoder goes out of scope)
+    encoder.deinit();
+    ESP_LOGI(TAG, "Test task finished cleanly.");
+
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started. Spawning encoder class test task with 32KB stack...");
+    
+    // Spin up in a dedicated FreeRTOS task with 32KB stack to accommodate Opus stack consumption
+    xTaskCreate(opus_class_test_task, "opus_class_test_task", 32768, NULL, 5, NULL);
+}
+ 
+#endif
