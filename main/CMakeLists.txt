@@ -75,6 +75,7 @@ idf_component_register(
         esp_http_server # for wifi privision
         esp_wifi_manager
         esp_bus
+        libopus
 )
 
 

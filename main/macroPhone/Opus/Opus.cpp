@@ -389,178 +389,562 @@
 
 
 
+// #include "Opus.hpp"
+// #include "esp_log.h"
+
+// // Tag string used for ESP_LOG error and information logging
+// static const char* TAG = "SimpleOpusEncoder";
+
+// // Constructor: Initializes internal configuration and sets handle pointer to null
+// SimpleOpusEncoder::SimpleOpusEncoder(const Config& config)
+//     : m_config(config), m_handle(nullptr) {}
+
+// // Destructor: Automatically calls deinit to release hardware resources
+// SimpleOpusEncoder::~SimpleOpusEncoder() {
+//     deinit();
+// }
+
+// // Move Constructor: Transfers handle ownership from another instance
+// SimpleOpusEncoder::SimpleOpusEncoder(SimpleOpusEncoder&& other) noexcept
+//     : m_config(other.m_config), m_handle(other.m_handle) {
+//     other.m_handle = nullptr; // Nullify original handle so it isn't closed by destructor
+// }
+
+// // Move Assignment Operator: Cleans up existing state and takes handle from another instance
+// SimpleOpusEncoder& SimpleOpusEncoder::operator=(SimpleOpusEncoder&& other) noexcept {
+//     if (this != &other) {          // Guard against self-assignment
+//         deinit();                  // Free current resources
+//         m_config = other.m_config; // Copy configuration
+//         m_handle = other.m_handle; // Transfer handle pointer
+//         other.m_handle = nullptr;  // Invalidate source handle
+//     }
+//     return *this;
+// }
+
+// // Helper method: Calculates the required Opus enum from sample rate and PCM sample count
+// esp_opus_enc_frame_duration_t SimpleOpusEncoder::calculateFrameDuration(int sample_rate, size_t chunk_size) {
+//     // For stereo, samples are interleaved, so calculate samples per individual channel
+//     size_t samples_per_channel = (m_config.channels > 1) ? (chunk_size / m_config.channels) : chunk_size;
+
+//     // Formula: duration_in_ms = (samples_per_channel * 1000) / sample_rate
+//     uint32_t duration_ms = static_cast<uint32_t>((samples_per_channel * 1000) / sample_rate);
+//    ESP_LOGI("++++++++++++++++++=", "duration = %u,chunk size %zu",duration_ms,chunk_size);
+//     // Match calculated millisecond duration to the corresponding Espressif API enum
+//     switch (duration_ms) {
+//         case 2:  return ESP_OPUS_ENC_FRAME_DURATION_2_5_MS;  // 2.5ms frame duration
+//         case 5:  return ESP_OPUS_ENC_FRAME_DURATION_5_MS;    // 5ms frame duration
+//         case 10: return ESP_OPUS_ENC_FRAME_DURATION_10_MS;   // 10ms frame duration
+//         case 20: return ESP_OPUS_ENC_FRAME_DURATION_20_MS;   // 20ms frame duration (Standard)
+//         case 40: return ESP_OPUS_ENC_FRAME_DURATION_40_MS;   // 40ms frame duration
+//         case 60: return ESP_OPUS_ENC_FRAME_DURATION_60_MS;   // 60ms frame duration
+//         default:
+//             // Log warning if duration is non-standard and fall back to the safe 20ms default
+//             ESP_LOGW(TAG, "Unusual frame duration (%lu ms), defaulting to 20ms", duration_ms);
+//             return ESP_OPUS_ENC_FRAME_DURATION_20_MS;
+//     }
+// }
+
+// // Opens and configures the Espressif Opus encoder handle
+// esp_err_t SimpleOpusEncoder::init() {
+//     // Return immediately if the encoder is already initialized
+//     if (m_handle != nullptr) {
+//         ESP_LOGW(TAG, "Encoder handle already initialized");
+//         return ESP_OK;
+//     }
+
+//     // Set standard target bitrate based on sampling rate (32 kbps for <=16kHz, 64 kbps for >16kHz)
+//     int default_bitrate = (m_config.sample_rate >= 24000) ? 64000 : 32000;
+
+//     // Populate Espressif's underlying opus configuration structure
+//     esp_opus_enc_config_t opus_cfg = {
+//         .sample_rate = m_config.sample_rate,                                                // Audio sample rate
+//         .channel = m_config.channels,                                                      // Channel count (1 or 2)
+//         .bits_per_sample = 16,                                                             // Fixed at 16-bit PCM
+//         .bitrate = default_bitrate,                                                        // Compressed target bitrate in bps
+//         .frame_duration = calculateFrameDuration(m_config.sample_rate, m_config.chunk_size), // Frame duration enum
+//         .application_mode = ESP_OPUS_ENC_APPLICATION_VOIP,                                 // VOIP mode optimized for voice
+//         .complexity = 5,                                                                   // ESP32 optimal CPU complexity balance (0-10)
+//         .enable_fec = false,                                                               // Disable Forward Error Correction
+//         .enable_dtx = false,                                                               // Disable Discontinuous Transmission
+//         .enable_vbr = true,                                                                // Enable Variable Bitrate mode
+//     };
+
+//     // Open the Opus encoder instance passing configuration, structure size, and handle reference pointer
+//     esp_audio_err_t err = esp_opus_enc_open(&opus_cfg, sizeof(esp_opus_enc_config_t), &m_handle);
+
+//     // Verify if initialization was successful and handle was populated
+//     if (err != ESP_AUDIO_ERR_OK || m_handle == nullptr) {
+//         ESP_LOGE(TAG, "esp_opus_enc_open failed with error code: 0x%x", err);
+//         m_handle = nullptr; // Ensure handle remains null on error
+//         return ESP_FAIL;
+//     }
+
+//     ESP_LOGI(TAG, "Encoder ready (%d Hz, %d ch, chunk=%u)", m_config.sample_rate, m_config.channels, (unsigned)m_config.chunk_size);
+//     return ESP_OK;
+// }
+
+// // Closes and frees the encoder memory
+// void SimpleOpusEncoder::deinit() {
+//     // Only attempt cleanup if handle is valid
+//     if (m_handle != nullptr) {
+//         esp_opus_enc_close(m_handle); // Call Espressif close function
+//         m_handle = nullptr;           // Reset pointer handle to null
+//         ESP_LOGI(TAG, "Opus encoder successfully closed");
+//     }
+// }
+
+//  // Main encoding function: processes PCM audio into a raw buffer
+// // CHANGED: Parameter type changed from std::span<const int16_t> to const std::vector<int16_t>&
+// int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size) {
+//     // Validate that encoder is initialized
+//     if (m_handle == nullptr) {
+//         ESP_LOGE(TAG, "Encoder is uninitialized. Call init() first.");
+//         return -1;
+//     }
+
+//     // Validate input data parameters
+//     if (pcm_samples.empty() || out_buffer == nullptr || out_buffer_max_size == 0) {
+//         return 0;
+//     }
+
+//     // Prepare input frame structure expected by Espressif's audio process API
+//     esp_audio_enc_in_frame_t in_frame = {};
+    
+//     // Reinterpret signed 16-bit PCM pointer as unsigned byte pointer
+//     // CHANGED: Safe conversion from const vector pointer to uint8_t* to avoid modifying underlying data
+//     in_frame.buffer = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(pcm_samples.data()));
+    
+//     // Set total length of input data in bytes (sample_count * 2)
+//     // CHANGED: Uses vector size * sizeof(int16_t)
+//     in_frame.len = static_cast<uint32_t>(pcm_samples.size() * sizeof(int16_t));
+
+//     // Prepare output frame structure to hold compressed packet data
+//     esp_audio_enc_out_frame_t out_frame = {};
+//     out_frame.buffer = out_buffer;           // Point to destination output memory
+//     out_frame.len = out_buffer_max_size;    // Pass max available capacity of destination buffer
+//     out_frame.encoded_bytes = 0;            // Initialize output size accumulator to zero
+//     out_frame.pts = 0;                      // Initialize presentation timestamp to zero
+
+//     // Perform actual Opus compression encoding
+
+// ESP_LOGI(TAG, "Encoding check: pcm_samples.size() = %u, out_buffer_max_size = %u", 
+//          (unsigned int)pcm_samples.size(), (unsigned int)out_buffer_max_size);
+
+// if (pcm_samples.size() != 640) { // Adjust 640 to your expected chunk size
+//     ESP_LOGE(TAG, "CRITICAL: PCM sample count mismatch! Expected 640, got %u", (unsigned int)pcm_samples.size());
+// }
+//             ESP_LOGI("++++++++++++", "before esp_opus_enc_process  ");
+//     esp_audio_err_t err = esp_opus_enc_process(m_handle, &in_frame, &out_frame);
+
+//             ESP_LOGI("++++++++++++", "success esp_opus_enc_process  ");
+//     // Evaluate encoding result
+//     if (err == ESP_AUDIO_ERR_OK) {
+//         // Success: Return number of bytes written to output buffer
+//         return static_cast<int>(out_frame.encoded_bytes);
+//     } else if (err == ESP_AUDIO_ERR_DATA_LACK) {
+//         // Warning: Input PCM sample count was lower than required frame duration
+//         ESP_LOGW(TAG, "Insufficient PCM samples supplied for one Opus frame");
+//         return 0;
+//     } else {
+//         // Error: Encoding pipeline failed
+//         ESP_LOGE(TAG, "esp_opus_enc_process error: 0x%x", err);
+//         return -1;
+//     }
+// }
+
+// // Convenient overload function: returns compressed payload inside a standard std::vector
+// // CHANGED: Parameter type changed from std::span<const int16_t> to const std::vector<int16_t>&
+// std::vector<uint8_t> SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint32_t max_output_size) {
+//     // Allocate temporary vector with maximum allocated capacity
+
+//             ESP_LOGI("++++++++++++", "before  std::vector<uint8_t> output_vec(max_output_size);");
+//     std::vector<uint8_t> output_vec(max_output_size);
+
+       
+//     // Call raw buffer encoding method passing vector buffer memory
+//     int bytes_written = encode(pcm_samples, output_vec.data(), max_output_size);
+//      ESP_LOGI("++++++++++++", "success    int bytes_written = encode(pcm_samples, output_vec.data(), max_output_size);");
+//     // Check if encoding produced output
+//     if (bytes_written > 0) {
+//         // Shrink vector down to match exact encoded byte length
+//         output_vec.resize(bytes_written);
+//         return output_vec;
+//     }
+
+//     // Return empty vector on failure or missing samples
+//     return {};
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// #include "Opus.hpp"
+// #include "esp_log.h"
+
+// // Tag string used for ESP_LOG error and information logging
+// static const char* TAG = "SimpleOpusEncoder";
+
+// // Constructor: Initializes internal configuration and sets handle pointer to null
+// SimpleOpusEncoder::SimpleOpusEncoder(const Config& config)
+//     : m_config(config), m_handle(nullptr) {}
+
+// // Destructor: Automatically calls deinit to release hardware resources
+// SimpleOpusEncoder::~SimpleOpusEncoder() {
+//     deinit();
+// }
+
+// // Move Constructor: Transfers handle ownership from another instance
+// SimpleOpusEncoder::SimpleOpusEncoder(SimpleOpusEncoder&& other) noexcept
+//     : m_config(other.m_config), m_handle(other.m_handle) {
+//     other.m_handle = nullptr; // Nullify original handle so it isn't closed by destructor
+// }
+
+// // Move Assignment Operator: Cleans up existing state and takes handle from another instance
+// SimpleOpusEncoder& SimpleOpusEncoder::operator=(SimpleOpusEncoder&& other) noexcept {
+//     if (this != &other) {         // Guard against self-assignment
+//         deinit();                 // Free current resources
+//         m_config = other.m_config; // Copy configuration
+//         m_handle = other.m_handle; // Transfer handle pointer
+//         other.m_handle = nullptr;  // Invalidate source handle
+//     }
+//     return *this;
+// }
+
+// // Helper method: Maps millisecond duration directly to Espressif API enum
+// esp_opus_enc_frame_duration_t SimpleOpusEncoder::mapDurationToEnum(uint32_t duration_ms) {
+//     ESP_LOGI("++++++++++++++++++=", "Target frame duration = %u ms", duration_ms);
+//     switch (duration_ms) {
+//         case 2:  return ESP_OPUS_ENC_FRAME_DURATION_2_5_MS;  // 2.5ms frame duration
+//         case 5:  return ESP_OPUS_ENC_FRAME_DURATION_5_MS;    // 5ms frame duration
+//         case 10: return ESP_OPUS_ENC_FRAME_DURATION_10_MS;   // 10ms frame duration
+//         case 20: return ESP_OPUS_ENC_FRAME_DURATION_20_MS;   // 20ms frame duration (Standard)
+//         case 40: return ESP_OPUS_ENC_FRAME_DURATION_40_MS;   // 40ms frame duration
+//         case 60: return ESP_OPUS_ENC_FRAME_DURATION_60_MS;   // 60ms frame duration
+//         default:
+//             // Log warning if duration is non-standard and fall back to the safe 20ms default
+//             ESP_LOGW(TAG, "Unusual frame duration (%lu ms), defaulting to 20ms", duration_ms);
+//             return ESP_OPUS_ENC_FRAME_DURATION_20_MS;
+//     }
+// }
+
+// // Opens and configures the Espressif Opus encoder handle
+// esp_err_t SimpleOpusEncoder::init() {
+//     // Return immediately if the encoder is already initialized
+//     if (m_handle != nullptr) {
+//         ESP_LOGW(TAG, "Encoder handle already initialized");
+//         return ESP_OK;
+//     }
+
+//     // Set standard target bitrate based on sampling rate (32 kbps for <=16kHz, 64 kbps for >16kHz)
+//     int default_bitrate = (m_config.sample_rate >= 24000) ? 64000 : 32000;
+
+//     // Populate Espressif's underlying opus configuration structure
+//     esp_opus_enc_config_t opus_cfg = {
+//         .sample_rate = m_config.sample_rate,                                                // Audio sample rate
+//         .channel = m_config.channels,                                                      // Channel count (1 or 2)
+//         .bits_per_sample = 16,                                                             // Fixed at 16-bit PCM
+//         .bitrate = default_bitrate,                                                        // Compressed target bitrate in bps
+//         .frame_duration = mapDurationToEnum(m_config.frame_duration_ms),                   // CHANGED: Derived directly from config duration instead of chunk size
+//         .application_mode = ESP_OPUS_ENC_APPLICATION_VOIP,                                 // VOIP mode optimized for voice
+//         .complexity = 5,                                                                   // ESP32 optimal CPU complexity balance (0-10)
+//         .enable_fec = false,                                                               // Disable Forward Error Correction
+//         .enable_dtx = false,                                                               // Disable Discontinuous Transmission
+//         .enable_vbr = true,                                                                // Enable Variable Bitrate mode
+//     };
+
+//     // Open the Opus encoder instance passing configuration, structure size, and handle reference pointer
+//     esp_audio_err_t err = esp_opus_enc_open(&opus_cfg, sizeof(esp_opus_enc_config_t), &m_handle);
+
+//     // Verify if initialization was successful and handle was populated
+//     if (err != ESP_AUDIO_ERR_OK || m_handle == nullptr) {
+//         ESP_LOGE(TAG, "esp_opus_enc_open failed with error code: 0x%x", err);
+//         m_handle = nullptr; // Ensure handle remains null on error
+//         return ESP_FAIL;
+//     }
+
+//     ESP_LOGI(TAG, "Encoder ready (%d Hz, %d ch, %lu ms duration)", m_config.sample_rate, m_config.channels, m_config.frame_duration_ms);
+
+
+//     int required_input_bytes = 0;
+// int required_output_bytes = 0;
+
+// esp_audio_err_t size_err = esp_opus_enc_get_frame_size(
+//     m_handle,
+//     &required_input_bytes,
+//     &required_output_bytes
+// );
+
+// if (size_err != ESP_AUDIO_ERR_OK) {
+//     ESP_LOGE(TAG, "Failed to query Opus frame sizes: 0x%x", size_err);
+//     deinit();
+//     return ESP_FAIL;
+// }
+
+// ESP_LOGI(TAG, "Opus frame sizes: input=%d bytes, output=%d bytes",
+//          required_input_bytes, required_output_bytes);
+//     return ESP_OK;
+// }
+
+// // Closes and frees the encoder memory
+// void SimpleOpusEncoder::deinit() {
+//     // Only attempt cleanup if handle is valid
+//     if (m_handle != nullptr) {
+//         esp_opus_enc_close(m_handle); // Call Espressif close function
+//         m_handle = nullptr;            // Reset pointer handle to null
+//         ESP_LOGI(TAG, "Opus encoder successfully closed");
+//     }
+// }
+
+// // Main encoding function: processes PCM audio into a raw buffer
+// int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size) {
+//     // Validate that encoder is initialized
+//     if (m_handle == nullptr) {
+//         ESP_LOGE(TAG, "Encoder is uninitialized. Call init() first.");
+//         return -1;
+//     }
+
+//     // Validate input data parameters
+//     if (pcm_samples.empty() || out_buffer == nullptr || out_buffer_max_size == 0) {
+//         return 0;
+//     }
+
+//     // Prepare input frame structure expected by Espressif's audio process API
+//     esp_audio_enc_in_frame_t in_frame = {};
+    
+//     // Reinterpret signed 16-bit PCM pointer as unsigned byte pointer
+//     in_frame.buffer = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(pcm_samples.data()));
+    
+//     // Set total length of input data in bytes (sample_count * 2)
+//     in_frame.len = static_cast<uint32_t>(pcm_samples.size() * sizeof(int16_t));
+
+//     // Prepare output frame structure to hold compressed packet data
+//     esp_audio_enc_out_frame_t out_frame = {};
+//     out_frame.buffer = out_buffer;            // Point to destination output memory
+//     out_frame.len = out_buffer_max_size;    // Pass max available capacity of destination buffer
+//     out_frame.encoded_bytes = 0;            // Initialize output size accumulator to zero
+//     out_frame.pts = 0;                      // Initialize presentation timestamp to zero
+
+//     // Perform actual Opus compression encoding
+//     ESP_LOGI(TAG, "Encoding check: pcm_samples.size() = %u, out_buffer_max_size = %u", 
+//              (unsigned int)pcm_samples.size(), (unsigned int)out_buffer_max_size);
+
+//     // CHANGED: Mathematically calculated expected total sample count based on sample rate, channels, and duration (e.g., 16000 * 2 channels * 0.020s = 640 samples)
+//     size_t expected_samples_per_channel = (m_config.sample_rate * m_config.frame_duration_ms) / 1000;
+//     size_t expected_total_samples = expected_samples_per_channel * m_config.channels;
+
+//     if (pcm_samples.size() != expected_total_samples) { 
+//         ESP_LOGE(TAG, "CRITICAL: PCM sample count mismatch! Expected %zu, got %u", expected_total_samples, (unsigned int)pcm_samples.size());
+//     }
+
+//     ESP_LOGI("++++++++++++", "before esp_opus_enc_process  ");
+//     esp_audio_err_t err = esp_audio_enc_process(m_handle, &in_frame, &out_frame);
+
+//    /// ESP_LOGI("++++++++++++", "success esp_opus_enc_process  ");
+//     // Evaluate encoding result
+//     if (err == ESP_AUDIO_ERR_OK) {
+//         // Success: Return number of bytes written to output buffer
+//         return static_cast<int>(out_frame.encoded_bytes);
+//     } else if (err == ESP_AUDIO_ERR_DATA_LACK) {
+//         // Warning: Input PCM sample count was lower than required frame duration
+//         ESP_LOGW(TAG, "Insufficient PCM samples supplied for one Opus frame");
+//         return 0;
+//     } else {
+//         // Error: Encoding pipeline failed
+//         ESP_LOGE(TAG, "esp_opus_enc_process error: 0x%x", err);
+//         return -1;
+//     }
+// }
+
+// // Convenient overload function: returns compressed payload inside a standard std::vector
+// std::vector<uint8_t> SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint32_t max_output_size) {
+//     // Allocate temporary vector with maximum allocated capacity
+//     ESP_LOGI("++++++++++++", "before  std::vector<uint8_t> output_vec(max_output_size);");
+//     std::vector<uint8_t> output_vec(max_output_size); 
+//     // Call raw buffer encoding method passing vector buffer memory
+//     int bytes_written = encode(pcm_samples, output_vec.data(), max_output_size);
+//     //ESP_LOGI("++++++++++++", "success    int bytes_written = encode(pcm_samples, output_vec.data(), max_output_size);");
+    
+//     // Check if encoding produced output
+//     if (bytes_written > 0) {
+//         // Shrink vector down to match exact encoded byte length
+//         output_vec.resize(bytes_written);
+//         return output_vec;
+//     }
+
+//     // Return empty vector on failure or missing samples
+//     return {};
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #include "Opus.hpp"
 #include "esp_log.h"
 
-// Tag string used for ESP_LOG error and information logging
 static const char* TAG = "SimpleOpusEncoder";
 
-// Constructor: Initializes internal configuration and sets handle pointer to null
 SimpleOpusEncoder::SimpleOpusEncoder(const Config& config)
-    : m_config(config), m_handle(nullptr) {}
+    : m_config(config), m_encoder(nullptr), m_expected_samples_per_channel(0) {}
 
-// Destructor: Automatically calls deinit to release hardware resources
 SimpleOpusEncoder::~SimpleOpusEncoder() {
     deinit();
 }
 
-// Move Constructor: Transfers handle ownership from another instance
 SimpleOpusEncoder::SimpleOpusEncoder(SimpleOpusEncoder&& other) noexcept
-    : m_config(other.m_config), m_handle(other.m_handle) {
-    other.m_handle = nullptr; // Nullify original handle so it isn't closed by destructor
+    : m_config(other.m_config), 
+      m_encoder(other.m_encoder), 
+      m_expected_samples_per_channel(other.m_expected_samples_per_channel) {
+    other.m_encoder = nullptr;
+    other.m_expected_samples_per_channel = 0;
 }
 
-// Move Assignment Operator: Cleans up existing state and takes handle from another instance
 SimpleOpusEncoder& SimpleOpusEncoder::operator=(SimpleOpusEncoder&& other) noexcept {
-    if (this != &other) {          // Guard against self-assignment
-        deinit();                  // Free current resources
-        m_config = other.m_config; // Copy configuration
-        m_handle = other.m_handle; // Transfer handle pointer
-        other.m_handle = nullptr;  // Invalidate source handle
+    if (this != &other) {
+        deinit();
+        m_config = other.m_config;
+        m_encoder = other.m_encoder;
+        m_expected_samples_per_channel = other.m_expected_samples_per_channel;
+        other.m_encoder = nullptr;
+        other.m_expected_samples_per_channel = 0;
     }
     return *this;
 }
 
-// Helper method: Calculates the required Opus enum from sample rate and PCM sample count
-esp_opus_enc_frame_duration_t SimpleOpusEncoder::calculateFrameDuration(int sample_rate, size_t chunk_size) {
-    // For stereo, samples are interleaved, so calculate samples per individual channel
-    size_t samples_per_channel = (m_config.channels > 1) ? (chunk_size / m_config.channels) : chunk_size;
-
-    // Formula: duration_in_ms = (samples_per_channel * 1000) / sample_rate
-    uint32_t duration_ms = static_cast<uint32_t>((samples_per_channel * 1000) / sample_rate);
-
-    // Match calculated millisecond duration to the corresponding Espressif API enum
-    switch (duration_ms) {
-        case 2:  return ESP_OPUS_ENC_FRAME_DURATION_2_5_MS;  // 2.5ms frame duration
-        case 5:  return ESP_OPUS_ENC_FRAME_DURATION_5_MS;    // 5ms frame duration
-        case 10: return ESP_OPUS_ENC_FRAME_DURATION_10_MS;   // 10ms frame duration
-        case 20: return ESP_OPUS_ENC_FRAME_DURATION_20_MS;   // 20ms frame duration (Standard)
-        case 40: return ESP_OPUS_ENC_FRAME_DURATION_40_MS;   // 40ms frame duration
-        case 60: return ESP_OPUS_ENC_FRAME_DURATION_60_MS;   // 60ms frame duration
-        default:
-            // Log warning if duration is non-standard and fall back to the safe 20ms default
-            ESP_LOGW(TAG, "Unusual frame duration (%lu ms), defaulting to 20ms", duration_ms);
-            return ESP_OPUS_ENC_FRAME_DURATION_20_MS;
-    }
-}
-
-// Opens and configures the Espressif Opus encoder handle
 esp_err_t SimpleOpusEncoder::init() {
-    // Return immediately if the encoder is already initialized
-    if (m_handle != nullptr) {
+    if (m_encoder != nullptr) {
         ESP_LOGW(TAG, "Encoder handle already initialized");
         return ESP_OK;
     }
 
-    // Set standard target bitrate based on sampling rate (32 kbps for <=16kHz, 64 kbps for >16kHz)
-    int default_bitrate = (m_config.sample_rate >= 24000) ? 64000 : 32000;
-
-    // Populate Espressif's underlying opus configuration structure
-    esp_opus_enc_config_t opus_cfg = {
-        .sample_rate = m_config.sample_rate,                                                // Audio sample rate
-        .channel = m_config.channels,                                                      // Channel count (1 or 2)
-        .bits_per_sample = 16,                                                             // Fixed at 16-bit PCM
-        .bitrate = default_bitrate,                                                        // Compressed target bitrate in bps
-        .frame_duration = calculateFrameDuration(m_config.sample_rate, m_config.chunk_size), // Frame duration enum
-        .application_mode = ESP_OPUS_ENC_APPLICATION_VOIP,                                 // VOIP mode optimized for voice
-        .complexity = 5,                                                                   // ESP32 optimal CPU complexity balance (0-10)
-        .enable_fec = false,                                                               // Disable Forward Error Correction
-        .enable_dtx = false,                                                               // Disable Discontinuous Transmission
-        .enable_vbr = true,                                                                // Enable Variable Bitrate mode
-    };
-
-    // Open the Opus encoder instance passing configuration, structure size, and handle reference pointer
-    esp_audio_err_t err = esp_opus_enc_open(&opus_cfg, sizeof(esp_opus_enc_config_t), &m_handle);
-
-    // Verify if initialization was successful and handle was populated
-    if (err != ESP_AUDIO_ERR_OK || m_handle == nullptr) {
-        ESP_LOGE(TAG, "esp_opus_enc_open failed with error code: 0x%x", err);
-        m_handle = nullptr; // Ensure handle remains null on error
+    int err = 0;
+    // Create the upstream Opus encoder instance with fixed-point arithmetic optimization
+    m_encoder = opus_encoder_create(m_config.sample_rate, m_config.channels, OPUS_APPLICATION_VOIP, &err);
+    
+    if (err != OPUS_OK || m_encoder == nullptr) {
+        ESP_LOGE(TAG, "opus_encoder_create failed with error: %s", opus_strerror(err));
+        m_encoder = nullptr;
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Encoder ready (%d Hz, %d ch, chunk=%u)", m_config.sample_rate, m_config.channels, (unsigned)m_config.chunk_size);
+    // Configure encoder parameters via control controls (ctl)
+    opus_encoder_ctl(m_encoder, OPUS_SET_BITRATE(m_config.bitrate));
+    opus_encoder_ctl(m_encoder, OPUS_SET_COMPLEXITY(m_config.complexity));
+    opus_encoder_ctl(m_encoder, OPUS_SET_VBR(1));          // Enable Variable Bitrate
+    opus_encoder_ctl(m_encoder, OPUS_SET_VBR_CONSTRAINT(1)); // Constrained VBR for steady streaming
+
+    // Calculate expected samples per channel based on frame duration
+    m_expected_samples_per_channel = (m_config.sample_rate * m_config.frame_duration_ms) / 1000;
+
+    ESP_LOGI(TAG, "Upstream Opus Encoder initialized successfully (%d Hz, %d ch, %lu ms duration, %zu samples/ch)",
+             m_config.sample_rate, m_config.channels, m_config.frame_duration_ms, m_expected_samples_per_channel);
+    
     return ESP_OK;
 }
 
-// Closes and frees the encoder memory
 void SimpleOpusEncoder::deinit() {
-    // Only attempt cleanup if handle is valid
-    if (m_handle != nullptr) {
-        esp_opus_enc_close(m_handle); // Call Espressif close function
-        m_handle = nullptr;           // Reset pointer handle to null
-        ESP_LOGI(TAG, "Opus encoder successfully closed");
+    if (m_encoder != nullptr) {
+        opus_encoder_destroy(m_encoder);
+        m_encoder = nullptr;
+        m_expected_samples_per_channel = 0;
+        ESP_LOGI(TAG, "Upstream Opus Encoder destroyed successfully");
     }
 }
 
- // Main encoding function: processes PCM audio into a raw buffer
-// CHANGED: Parameter type changed from std::span<const int16_t> to const std::vector<int16_t>&
 int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* out_buffer, uint32_t out_buffer_max_size) {
-    // Validate that encoder is initialized
-    if (m_handle == nullptr) {
+    if (m_encoder == nullptr) {
         ESP_LOGE(TAG, "Encoder is uninitialized. Call init() first.");
         return -1;
     }
 
-    // Validate input data parameters
     if (pcm_samples.empty() || out_buffer == nullptr || out_buffer_max_size == 0) {
         return 0;
     }
 
-    // Prepare input frame structure expected by Espressif's audio process API
-    esp_audio_enc_in_frame_t in_frame = {};
-    
-    // Reinterpret signed 16-bit PCM pointer as unsigned byte pointer
-    // CHANGED: Safe conversion from const vector pointer to uint8_t* to avoid modifying underlying data
-    in_frame.buffer = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(pcm_samples.data()));
-    
-    // Set total length of input data in bytes (sample_count * 2)
-    // CHANGED: Uses vector size * sizeof(int16_t)
-    in_frame.len = static_cast<uint32_t>(pcm_samples.size() * sizeof(int16_t));
+    size_t expected_total_samples = m_expected_samples_per_channel * m_config.channels;
+    if (pcm_samples.size() != expected_total_samples) {
+        ESP_LOGW(TAG, "PCM sample count mismatch! Expected %zu, got %u", 
+                 expected_total_samples, (unsigned int)pcm_samples.size());
+    }
 
-    // Prepare output frame structure to hold compressed packet data
-    esp_audio_enc_out_frame_t out_frame = {};
-    out_frame.buffer = out_buffer;           // Point to destination output memory
-    out_frame.len = out_buffer_max_size;    // Pass max available capacity of destination buffer
-    out_frame.encoded_bytes = 0;            // Initialize output size accumulator to zero
-    out_frame.pts = 0;                      // Initialize presentation timestamp to zero
+    // Invoke direct upstream libopus encoding routine
+    int encoded_bytes = opus_encode(
+        m_encoder,
+        pcm_samples.data(),
+        static_cast<int>(m_expected_samples_per_channel),
+        out_buffer,
+        static_cast<int>(out_buffer_max_size)
+    );
 
-    // Perform actual Opus compression encoding
-    esp_audio_err_t err = esp_opus_enc_process(m_handle, &in_frame, &out_frame);
-
-    // Evaluate encoding result
-    if (err == ESP_AUDIO_ERR_OK) {
-        // Success: Return number of bytes written to output buffer
-        return static_cast<int>(out_frame.encoded_bytes);
-    } else if (err == ESP_AUDIO_ERR_DATA_LACK) {
-        // Warning: Input PCM sample count was lower than required frame duration
-        ESP_LOGW(TAG, "Insufficient PCM samples supplied for one Opus frame");
-        return 0;
-    } else {
-        // Error: Encoding pipeline failed
-        ESP_LOGE(TAG, "esp_opus_enc_process error: 0x%x", err);
+    if (encoded_bytes < 0) {
+        ESP_LOGE(TAG, "opus_encode failed: %s", opus_strerror(encoded_bytes));
         return -1;
     }
+
+    return encoded_bytes;
 }
 
-// Convenient overload function: returns compressed payload inside a standard std::vector
-// CHANGED: Parameter type changed from std::span<const int16_t> to const std::vector<int16_t>&
 std::vector<uint8_t> SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint32_t max_output_size) {
-    // Allocate temporary vector with maximum allocated capacity
     std::vector<uint8_t> output_vec(max_output_size);
-
-    // Call raw buffer encoding method passing vector buffer memory
     int bytes_written = encode(pcm_samples, output_vec.data(), max_output_size);
-
-    // Check if encoding produced output
+    
     if (bytes_written > 0) {
-        // Shrink vector down to match exact encoded byte length
         output_vec.resize(bytes_written);
         return output_vec;
     }
 
-    // Return empty vector on failure or missing samples
     return {};
 }
-
-

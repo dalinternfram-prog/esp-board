@@ -1,3 +1,259 @@
+// #include "audio_capture_driver.hpp"
+
+// #include "esp_heap_caps.h"
+// #include "esp_log.h"
+// #include "bsp_board.h" // Hardware BSP layer
+// #include "driver/i2s_std.h"
+// #include "portmacro.h"
+// #include "macroPhone/arguments.hpp"
+// //* this class can now only handle one i2s line,which each has its own rx_handle;
+// //*
+// static const char* TAG = "AudioCaptureDriver";
+
+// // Default standard AFE audio frame size for 16kHz sampling (e.g., 32ms frame = 512 samples)
+// // static constexpr std::size_t kDefaultChunkSize = 512;
+
+// namespace Hardware {
+
+// AudioCaptureDriver::AudioCaptureDriver() {
+//     // 1. Discover hardware configuration directly from BSP
+//    // channel_count_ = static_cast<std::size_t>(esp_get_feed_channel());
+
+ 
+// channel_count_=macroPhone::argument::channel_count;
+// chunk_size_=macroPhone::argument::kDefaultChunkSize;
+
+
+
+
+//     //chunk_size_ = kDefaultChunkSize;
+
+//     const std::size_t total_samples = chunk_size_ * channel_count_;
+//     const std::size_t buffer_bytes = total_samples * sizeof(int16_t);
+
+//     // 2. Hide PSRAM memory management entirely inside Level 1
+//     raw_dma_buffer_ = static_cast<int16_t*>(
+//         heap_caps_malloc(buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+//     );
+
+//     if (raw_dma_buffer_ == nullptr) {
+//         ESP_LOGE(TAG, "Failed to allocate %zu bytes in PSRAM for audio buffer", buffer_bytes);
+//     } else {
+//         ESP_LOGI(TAG, "Audio Hardware Capture initialized (%zu channels, %zu samples/chunk)", 
+//                  channel_count_, chunk_size_);
+//     }
+// }
+
+// AudioCaptureDriver::~AudioCaptureDriver() {
+//     freeBuffer();
+// }
+
+// AudioCaptureDriver::AudioCaptureDriver(AudioCaptureDriver&& other) noexcept
+//     : channel_count_(other.channel_count_), 
+//       chunk_size_(other.chunk_size_), 
+//       raw_dma_buffer_(other.raw_dma_buffer_) {
+//     other.raw_dma_buffer_ = nullptr;
+//     other.channel_count_ = 0;
+//     other.chunk_size_ = 0;
+// }
+
+// AudioCaptureDriver& AudioCaptureDriver::operator=(AudioCaptureDriver&& other) noexcept {
+//     if (this != &other) {
+//         freeBuffer();
+//         channel_count_ = other.channel_count_;
+//         chunk_size_ = other.chunk_size_;
+//         raw_dma_buffer_ = other.raw_dma_buffer_;
+        
+//         other.raw_dma_buffer_ = nullptr;
+//         other.channel_count_ = 0;
+//         other.chunk_size_ = 0;
+//     }
+//     return *this;
+// }
+
+// void AudioCaptureDriver::freeBuffer() noexcept {
+//     if (raw_dma_buffer_ != nullptr) {
+//         heap_caps_free(raw_dma_buffer_);
+//         raw_dma_buffer_ = nullptr;
+//     }
+// }
+
+ 
+// esp_err_t AudioCaptureDriver::readSamples() {
+//     if (raw_dma_buffer_ == nullptr) {
+//         return ESP_ERR_NO_MEM;
+//     }
+
+//     const std::size_t buffer_bytes = chunk_size_ * channel_count_ * sizeof(int16_t);
+//     size_t bytes_read = 0;
+
+// // Use the handle returned when setting up i2s_new_rx_channel()
+//     esp_err_t err = i2s_channel_read(bsp_i2s_get_rx_handle(), this->raw_dma_buffer_, buffer_bytes, &bytes_read, 1000);
+
+//     if (err != ESP_OK || bytes_read == 0) {
+//         ESP_LOGW(TAG, "Failed to read PCM data directly from I2S");
+//         return ESP_FAIL;
+//     }
+
+//     return ESP_OK;
+// }
+ 
+
+// std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
+//     if (raw_dma_buffer_ == nullptr) {
+//         return {};
+//     }
+
+//     const std::size_t total_samples = chunk_size_ * channel_count_;
+    
+//     // Allocate and copy data from raw_dma_buffer_ into a new std::vector
+//     return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples);
+// }
+
+
+
+
+// } // namespace Hardware
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// #include "audio_capture_driver.hpp"
+
+// #include "esp_heap_caps.h"
+// #include "esp_log.h"
+// #include "bsp_board.h" // Hardware BSP layer
+// #include "driver/i2s_std.h"
+// #include "portmacro.h"
+
+// // * This class can now only handle one I2S line, each with its own rx_handle
+// static const char* TAG = "AudioCaptureDriver";
+
+// namespace Hardware {
+
+// AudioCaptureDriver::AudioCaptureDriver() {
+//     // 1. Foundational Audio Parameters (Sample Rate, Channels, and Duration)
+//     // CHANGED: Completely removed macroPhone::argument::kDefaultChunkSize. 
+//     // The driver now derives its sample sizing purely from runtime foundational constants.
+//     constexpr int sample_rate = 16000;          // 16 kHz sampling rate
+//     channel_count_ = 2;                         // Stereo configuration
+//     constexpr uint32_t duration_ms = 20;        // Target Opus frame duration (20ms)
+
+//     // CHANGED: Dynamically calculate samples per channel (e.g., 16000 Hz * 0.020s = 320 samples/channel)
+//     chunk_size_ = (sample_rate * duration_ms) / 1000;
+
+//     const std::size_t total_samples = chunk_size_ * channel_count_; // 320 * 2 = 640 total samples
+//     const std::size_t buffer_bytes = total_samples * sizeof(int16_t); // 640 * 2 bytes = 1280 bytes
+
+//     // 2. Hide PSRAM memory management entirely inside Level 1
+//     raw_dma_buffer_ = static_cast<int16_t*>(
+//         heap_caps_malloc(buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+//     );
+
+//     if (raw_dma_buffer_ == nullptr) {
+//         ESP_LOGE(TAG, "Failed to allocate %zu bytes in PSRAM for audio buffer", buffer_bytes);
+//     } else {
+//         ESP_LOGI(TAG, "Audio Hardware Capture initialized (%zu channels, %zu samples/channel, %lu ms duration)", 
+//                  channel_count_, chunk_size_, duration_ms);
+//     }
+// }
+
+// AudioCaptureDriver::~AudioCaptureDriver() {
+//     freeBuffer();
+// }
+
+// AudioCaptureDriver::AudioCaptureDriver(AudioCaptureDriver&& other) noexcept
+//     : channel_count_(other.channel_count_), 
+//       chunk_size_(other.chunk_size_), 
+//       raw_dma_buffer_(other.raw_dma_buffer_) {
+//     other.raw_dma_buffer_ = nullptr;
+//     other.channel_count_ = 0;
+//     other.chunk_size_ = 0;
+// }
+
+// AudioCaptureDriver& AudioCaptureDriver::operator=(AudioCaptureDriver&& other) noexcept {
+//     if (this != &other) {
+//         freeBuffer();
+//         channel_count_ = other.channel_count_;
+//         chunk_size_ = other.chunk_size_;
+//         raw_dma_buffer_ = other.raw_dma_buffer_;
+        
+//         other.raw_dma_buffer_ = nullptr;
+//         other.channel_count_ = 0;
+//         other.chunk_size_ = 0;
+//     }
+//     return *this;
+// }
+
+// void AudioCaptureDriver::freeBuffer() noexcept {
+//     if (raw_dma_buffer_ != nullptr) {
+//         heap_caps_free(raw_dma_buffer_);
+//         raw_dma_buffer_ = nullptr;
+//     }
+// }
+
+// esp_err_t AudioCaptureDriver::readSamples() {
+//     if (raw_dma_buffer_ == nullptr) {
+//         return ESP_ERR_NO_MEM;
+//     }
+
+//     const std::size_t buffer_bytes = chunk_size_ * channel_count_ * sizeof(int16_t);
+//     size_t bytes_read = 0;
+
+//     // Use the handle returned when setting up i2s_new_rx_channel()
+//     esp_err_t err = i2s_channel_read(bsp_i2s_get_rx_handle(), this->raw_dma_buffer_, buffer_bytes, &bytes_read, 1000);
+
+//     if (err != ESP_OK || bytes_read == 0) {
+//         ESP_LOGW(TAG, "Failed to read PCM data directly from I2S");
+//         return ESP_FAIL;
+//     }
+
+//     return ESP_OK;
+// }
+
+// std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
+//     if (raw_dma_buffer_ == nullptr) {
+//         return {};
+//     }
+
+//     const std::size_t total_samples = chunk_size_ * channel_count_;
+    
+//     // Allocate and copy data from raw_dma_buffer_ into a new std::vector
+//     return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples);
+// }
+
+// } // namespace Hardware
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #include "audio_capture_driver.hpp"
 
 #include "esp_heap_caps.h"
@@ -5,33 +261,21 @@
 #include "bsp_board.h" // Hardware BSP layer
 #include "driver/i2s_std.h"
 #include "portmacro.h"
-#include "macroPhone/arguments.hpp"
-//* this class can now only handle one i2s line,which each has its own rx_handle;
-//*
-static const char* TAG = "AudioCaptureDriver";
+#include "macroPhone/arguments.hpp" // Directly access project arguments
 
-// Default standard AFE audio frame size for 16kHz sampling (e.g., 32ms frame = 512 samples)
-// static constexpr std::size_t kDefaultChunkSize = 512;
+static const char* TAG = "AudioCaptureDriver";
 
 namespace Hardware {
 
 AudioCaptureDriver::AudioCaptureDriver() {
-    // 1. Discover hardware configuration directly from BSP
-   // channel_count_ = static_cast<std::size_t>(esp_get_feed_channel());
-
- 
-channel_count_=macroPhone::argument::channel_count;
-chunk_size_=macroPhone::argument::kDefaultChunkSize;
-
-
-
-
-    //chunk_size_ = kDefaultChunkSize;
+    // Directly pull from macroPhone::argument:: without intermediate wrappers
+    channel_count_ = macroPhone::argument::channel_count;
+    chunk_size_ = (macroPhone::argument::sample_rate * macroPhone::argument::target_frame_duration_ms) / 1000;
 
     const std::size_t total_samples = chunk_size_ * channel_count_;
-    const std::size_t buffer_bytes = total_samples * sizeof(int16_t);
+    const std::size_t buffer_bytes = total_samples * (macroPhone::argument::bits_per_chan / 8);
 
-    // 2. Hide PSRAM memory management entirely inside Level 1
+    // Hide PSRAM memory management entirely inside Level 1
     raw_dma_buffer_ = static_cast<int16_t*>(
         heap_caps_malloc(buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
     );
@@ -39,8 +283,8 @@ chunk_size_=macroPhone::argument::kDefaultChunkSize;
     if (raw_dma_buffer_ == nullptr) {
         ESP_LOGE(TAG, "Failed to allocate %zu bytes in PSRAM for audio buffer", buffer_bytes);
     } else {
-        ESP_LOGI(TAG, "Audio Hardware Capture initialized (%zu channels, %zu samples/chunk)", 
-                 channel_count_, chunk_size_);
+        ESP_LOGI(TAG, "Audio Hardware Capture initialized (%zu channels, %zu samples/channel, %lu ms duration)", 
+                 channel_count_, chunk_size_, macroPhone::argument::target_frame_duration_ms);
     }
 }
 
@@ -78,16 +322,14 @@ void AudioCaptureDriver::freeBuffer() noexcept {
     }
 }
 
- 
 esp_err_t AudioCaptureDriver::readSamples() {
     if (raw_dma_buffer_ == nullptr) {
         return ESP_ERR_NO_MEM;
-    }
-
-    const std::size_t buffer_bytes = chunk_size_ * channel_count_ * sizeof(int16_t);
+    } 
+    const std::size_t buffer_bytes = chunk_size_ * channel_count_ * (macroPhone::argument::bits_per_chan / 8);
     size_t bytes_read = 0;
 
-// Use the handle returned when setting up i2s_new_rx_channel()
+    // Use the handle returned when setting up i2s_new_rx_channel()
     esp_err_t err = i2s_channel_read(bsp_i2s_get_rx_handle(), this->raw_dma_buffer_, buffer_bytes, &bytes_read, 1000);
 
     if (err != ESP_OK || bytes_read == 0) {
@@ -97,7 +339,6 @@ esp_err_t AudioCaptureDriver::readSamples() {
 
     return ESP_OK;
 }
- 
 
 std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
     if (raw_dma_buffer_ == nullptr) {
@@ -109,8 +350,5 @@ std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
     // Allocate and copy data from raw_dma_buffer_ into a new std::vector
     return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples);
 }
-
-
-
 
 } // namespace Hardware

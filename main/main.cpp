@@ -270,9 +270,9 @@ FirmwareSwitch_class->init();
 FileManager::init();
 
 
-wifi::init();
+// wifi::init();
 
-Network::init(222);
+// Network::init(222);
  app_run_loop( NvsManager_class, FirmwareSwitch_class);
 
 }
