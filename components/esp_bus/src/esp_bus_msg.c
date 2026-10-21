@@ -276,6 +276,7 @@ esp_err_t esp_bus_emit(const char *src, const char *evt, const void *data, size_
         return ESP_ERR_TIMEOUT;
     }
     
+    ESP_LOGI("+++++++++++++++++++++++++++++++", "success emit in esp bus " );
     return ESP_OK;
 }
 
@@ -287,6 +288,9 @@ int esp_bus_sub(const char *pattern, esp_bus_evt_fn handler, void *ctx) {
     sub_node_t *node = calloc(1, sizeof(sub_node_t));
     if (!node) {
         xSemaphoreGive(g_bus.mutex);
+
+   
+    ESP_LOGI(TAG, "++????????????Sub '%s'", pattern );
         return -1;
     }
     
@@ -300,7 +304,8 @@ int esp_bus_sub(const char *pattern, esp_bus_evt_fn handler, void *ctx) {
     SLIST_INSERT_HEAD(&g_bus.subs, node, next);
     xSemaphoreGive(g_bus.mutex);
     
-    ESP_LOGD(TAG, "Sub '%s' id=%d", pattern, node->id);
+    ESP_LOGI(TAG, "++++++++++++++++++++++Sub '%s' id=%d", pattern, node->id);
+    ESP_LOGI(TAG, "Sub '%s' id=%d", pattern, node->id);
     return node->id;
 }
 

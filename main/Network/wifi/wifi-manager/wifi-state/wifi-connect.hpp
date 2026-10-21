@@ -634,7 +634,7 @@
 
 
 #pragma once
-
+#include "esp_wifi.h"
 #include "esp_bus.h" 
 #include "esp_timer.h"
 #include "esp_wifi_manager.h"
@@ -661,13 +661,13 @@ namespace wifi {
  * @param len Length of data payload
  * @param ctx User-defined context pointer
  */
-void on_wifi_connected(const char *event, const void *data, size_t len, void *ctx)
+inline void on_wifi_connected(const char *event, const void *data, size_t len, void *ctx)
 {
     // Cast the incoming raw data pointer to the library's wifi_connected_t structure
     const wifi_connected_t *info = (const wifi_connected_t *)data;
     
     // Log successful connection details including SSID, RSSI, and channel
-    ESP_LOGI(TAG, "WiFi connected event tag [%s] to SSID: %s (RSSI: %d dBm, Channel: %d)",
+    ESP_LOGI(TAG, "+++++++++++++++++++++++++++++++WiFi connected event tag [%s] to SSID: %s (RSSI: %d dBm, Channel: %d)",
              event, info->ssid, info->rssi, info->channel);
 
  
@@ -683,6 +683,48 @@ void on_wifi_connected(const char *event, const void *data, size_t len, void *ct
 
   
 }
+// /**
+//  * @brief Native ESP-IDF Callback for WiFi connected event
+//  * @param arg User-defined argument passed during registration
+//  * @param event_base Event base category (WIFI_EVENT)
+//  * @param event_id Specific event identifier (WIFI_EVENT_STA_CONNECTED)
+//  * @param event_data Pointer to native event data structure (wifi_event_sta_connected_t)
+//  */
+// void on_wifi_connected(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+// {
+//     // 1. Cast the raw event data to the native ESP-IDF structure
+//     wifi_event_sta_connected_t *event = (wifi_event_sta_connected_t *)event_data;
 
+//     // 2. Initialize your custom wifi_connected_t structure
+//     wifi_connected_t info = {0};
+    
+//     // Safely copy the SSID string
+//     memcpy(info.ssid, event->ssid, sizeof(info.ssid));
+//     info.ssid[sizeof(info.ssid) - 1] = '\0'; // Ensure null-termination
+    
+//     // Populate the channel directly from the event payload
+//     info.channel = event->channel;
+
+//     // 3. Fetch RSSI dynamically since it isn't part of the connection event struct
+//     wifi_ap_record_t ap_info;
+//     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+//         info.rssi = ap_info.rssi;
+//     } else {
+//         info.rssi = 0; // Fallback default if fetch fails
+//     }
+
+//     // 4. Log successful connection details
+//     ESP_LOGI(TAG, "+++++++++++++++++++++++++++++++WiFi connected natively to SSID: %s (RSSI: %d dBm, Channel: %d)",
+//              info.ssid, info.rssi, info.channel);
+
+//     // 5. Record the status object into persistent storage if available
+//     if (wifiConditionRecorderFile) {
+//         // Get current uptime in milliseconds using ESP-IDF timer
+//         uint32_t current_time_ms = (uint32_t)(esp_timer_get_time() / 1000);
+
+//         // Package the connection info and timestamp into your wrapper struct and save it
+//         wifiConditionRecorderFile->save(connected_wifi{info, current_time_ms});
+//     }
+// }
 
 } // namespace wifi

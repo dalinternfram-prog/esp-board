@@ -28,9 +28,40 @@ namespace wifi {
     }
 
    // Subscribe to WiFi events (before wifi_manager_init to catch early events)
+
+
+   
+
+   // 1. Register your native ESP-IDF event handlers
+// esp_event_handler_instance_register(WIFI_EVENT, 
+//                                     WIFI_EVENT_STA_CONNECTED, 
+//                                     &on_wifi_connected, 
+//                                     NULL, 
+//                                     NULL);
+
+// esp_event_handler_instance_register(WIFI_EVENT, 
+//                                     WIFI_EVENT_STA_DISCONNECTED, 
+//                                     &on_wifi_disconnected, 
+//                                     NULL, 
+//                                     NULL);
+
+// esp_event_handler_instance_register(IP_EVENT, 
+//                                     IP_EVENT_STA_GOT_IP, 
+//                                     &on_wifi_got_ip, 
+//                                     NULL, 
+//                                     NULL);
+
+
+
+
+
+
+
+
+
     esp_bus_sub(WIFI_EVT(WIFI_MGR_EVT_CONNECTED), on_wifi_connected, NULL);
     esp_bus_sub(WIFI_EVT(WIFI_MGR_EVT_DISCONNECTED), on_wifi_disconnected, NULL);
-    esp_bus_sub(WIFI_EVT(WIFI_MGR_EVT_GOT_IP), on_wifi_got_ip, NULL);
+    esp_bus_sub("wifi:got_ip", on_wifi_got_ip, NULL);
     //esp_bus_sub(WIFI_EVT(WIFI_MGR_EVT_VAR_CHANGED), on_var_changed, NULL);
 
 

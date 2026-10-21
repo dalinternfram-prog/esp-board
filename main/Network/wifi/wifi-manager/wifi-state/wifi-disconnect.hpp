@@ -28,13 +28,13 @@ namespace wifi {
  * @param len Length of data payload
  * @param ctx User-defined context pointer
  */
-void on_wifi_disconnected(const char *event, const void *data, size_t len, void *ctx)
+inline void on_wifi_disconnected(const char *event, const void *data, size_t len, void *ctx)
 {
     // Cast the incoming raw data pointer to the library's wifi_disconnected_t structure
     const wifi_disconnected_t *info = (const wifi_disconnected_t *)data;
     
     // Log the disconnection event details, including SSID and the reason code
-    ESP_LOGW(TAG, "WiFi disconnected event tag [%s] from %s (reason code: %d)", 
+    ESP_LOGW(TAG, "+++++++++++++++++++++++++++++++WiFi disconnected event tag [%s] from %s (reason code: %d)", 
              event, info->ssid, info->reason);
 
     // Check if the file recorder instance is valid before attempting to save
@@ -46,5 +46,39 @@ void on_wifi_disconnected(const char *event, const void *data, size_t len, void 
         wifiConditionRecorderFile->save(disconnected_wifi{*info, current_time_ms});
     }
 }
+// /**
+//  * @brief Native ESP-IDF Callback for WiFi disconnected event
+//  * @param arg User-defined argument passed during registration
+//  * @param event_base Event base category (WIFI_EVENT)
+//  * @param event_id Specific event identifier (WIFI_EVENT_STA_DISCONNECTED)
+//  * @param event_data Pointer to native event data structure (wifi_event_sta_disconnected_t)
+//  */
+// void on_wifi_disconnected(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+// {
+//     // 1. Cast the raw event data to the native ESP-IDF structure
+//     wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
 
+//     // 2. Initialize your custom wifi_disconnected_t structure
+//     wifi_disconnected_t info = {0};
+    
+//     // Safely copy the SSID string from the native struct
+//     memcpy(info.ssid, event->ssid, sizeof(info.ssid));
+//     info.ssid[sizeof(info.ssid) - 1] = '\0'; // Ensure null-termination
+    
+//     // Populate the disconnection reason code
+//     info.reason = event->reason;
+
+//     // 3. Log the disconnection event details, including SSID and the reason code
+//     ESP_LOGW(TAG, "+++++++++++++++++++++++++++++++WiFi disconnected natively from %s (reason code: %d)", 
+//              info.ssid, info.reason);
+
+//     // 4. Check if the file recorder instance is valid before attempting to save
+//     if (wifiConditionRecorderFile) {
+//         // Get current uptime in milliseconds using ESP-IDF timer
+//         uint32_t current_time_ms = (uint32_t)(esp_timer_get_time() / 1000);
+
+//         // Package the disconnection info and timestamp into your wrapper struct and save it
+//         wifiConditionRecorderFile->save(disconnected_wifi{info, current_time_ms});
+//     }
+// }
 } // namespace wifi

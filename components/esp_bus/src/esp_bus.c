@@ -99,7 +99,9 @@ bool esp_bus_match_pattern(const char *pattern, const char *target) {
 bool esp_bus_parse_pattern(const char *pattern, char *module, char *action, char *sep) {
     const char *dot = strchr(pattern, '.');
     const char *colon = strchr(pattern, ':');
-    
+    // ---> ADD THIS LOG AT THE START <---
+    // ESP_LOGI("PARSER_DEBUG", "Parsing raw pattern string: '%s' (colon=%p, dot=%p)", 
+    //          pattern ? pattern : "NULL", colon, dot);
     if (dot) {
         size_t len = dot - pattern;
         if (len >= ESP_BUS_NAME_MAX) return false;
@@ -113,11 +115,26 @@ bool esp_bus_parse_pattern(const char *pattern, char *module, char *action, char
     
     if (colon) {
         size_t len = colon - pattern;
+
+
+        // ---> ADD THIS LOG TO CHECK MATH <---
+      //  ESP_LOGI("PARSER_DEBUG", "Found colon! len = %u, module target ptr = %p", (unsigned int)len, module);
+
+
         if (len >= ESP_BUS_NAME_MAX) return false;
         strncpy(module, pattern, len);
         module[len] = '\0';
-        strncpy(action, colon + 1, ESP_BUS_PATTERN_MAX - 1);
-        action[ESP_BUS_PATTERN_MAX - 1] = '\0';
+        // ---> PUT YOUR LOG HERE <---
+       // ESP_LOGI("TEST_DEBUG", "Before action copy -> module is: '%s'", module);
+        //! emily change here from  strncpy(action, colon + 1, ESP_BUS_PATTERN_MAX - 1);
+        //! To :
+
+        strncpy(action, colon + 1, ESP_BUS_NAME_MAX - 1);
+        action[ESP_BUS_NAME_MAX - 1] = '\0';
+
+// ---> ADD THIS LOG TO CHECK RESULT <---
+       // ESP_LOGI("PARSER_DEBUG", "After copy -> module: '%s', action: '%s'", module, action);
+
         *sep = ':';
         return true;
     }
@@ -161,6 +178,11 @@ static void process_message(message_t *msg) {
             char module[ESP_BUS_NAME_MAX], event[ESP_BUS_NAME_MAX];
             char sep;
             if (esp_bus_parse_pattern(msg->pattern, module, event, &sep) && sep == ':') {
+
+
+            //     ESP_LOGI("BUS_DEBUG", "Parse pattern '%s' -> success=%d, module='%s', event='%s', sep='%c'", 
+            //  msg->pattern, true, module, event, sep);
+
                 esp_bus_dispatch_event(module, event, msg->data, msg->len);
             }
             if (msg->data) free(msg->data);
@@ -184,10 +206,13 @@ static void bus_task(void *arg) {
         
         // Wait for message or timeout
         if (xQueueReceive(g_bus.queue, &msg, wait_ticks) == pdTRUE) {
+            // ---> ADD THIS LOG: Proves the task woke up instantly <---
+          //  ESP_LOGI("RRRRRRRRRRRRRRRRR", "[TIMING] Bus task woke up! Received message pattern: '%s'", msg.pattern);
             process_message(&msg);
             
             // Drain remaining messages (non-blocking)
             while (xQueueReceive(g_bus.queue, &msg, 0) == pdTRUE) {
+             //   ESP_LOGI("RRRRRRRRRRRRRRRRR", "[TIMING] Drained extra message pattern: '%s'", msg.pattern);
                 process_message(&msg);
             }
         }

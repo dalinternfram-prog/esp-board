@@ -440,6 +440,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
         case IP_EVENT_STA_GOT_IP: {
             ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
             ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+           // ESP_LOGI("++++++++++++++++++++++", "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
             // Set bit immediately to unblock connect sequence (avoid deadlock)
             xEventGroupSetBits(g_wifi_mgr->event_group, WIFI_CONNECTED_BIT);
             xEventGroupClearBits(g_wifi_mgr->event_group, WIFI_FAIL_BIT);
@@ -498,6 +499,7 @@ static void wifi_mgr_task(void *arg)
                     // Emit esp_bus event
                     wifi_disconnected_t disc = {.reason = evt.data.disconnect.reason};
                     strncpy(disc.ssid, evt.data.disconnect.ssid, sizeof(disc.ssid) - 1);
+                    //  ESP_LOGI("++++++++++++++++++++++++", "   esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_DISCONNECTED, &disc, sizeof(disc));");
                     esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_DISCONNECTED, &disc, sizeof(disc));
 
                     // Auto reconnect if enabled and not in AP mode
@@ -535,7 +537,11 @@ static void wifi_mgr_task(void *arg)
                         conn.rssi = ap_info.rssi;
                         conn.channel = ap_info.primary;
                     }
+
+                 //     ESP_LOGI("++++++++++++++++++++++++", "  esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_CONNECTED, &conn, sizeof(conn));");
                     esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_CONNECTED, &conn, sizeof(conn));
+
+                   //   ESP_LOGI("++++++++++++++++++++++++", "    esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_GOT_IP, &evt.data.got_ip.ip_info, sizeof(esp_netif_ip_info_t));");
                     esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_GOT_IP, &evt.data.got_ip.ip_info, sizeof(esp_netif_ip_info_t));
 
                     // Stop AP if configured and AP is active
@@ -547,6 +553,8 @@ static void wifi_mgr_task(void *arg)
                 }
                     
                 case WM_INT_EVT_LOST_IP:
+
+                   //   ESP_LOGI("++++++++++++++++++++++++", "    esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_LOST_IP, NULL, 0);");
                     esp_bus_emit(WIFI_MODULE, WIFI_MGR_EVT_LOST_IP, NULL, 0);
                     break;
                     
