@@ -25,7 +25,7 @@ static char SD_Name[MAX_MP3_FILE][100];
 static uint16_t Search_mp3_file_count = 0;
 static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
-
+static int magicStackNumber = 32768;
  
 void app_run_loop(void* pvParameters);
 // 按键回调函数
@@ -261,7 +261,7 @@ extern "C" void app_main()
     xTaskCreate(
         app_run_loop,          // Task function
         "app_run_loop_task",   // Task name for debugging
-        32768,                  // Stack depth (bytes)
+        magicStackNumber,                  // Stack depth (bytes)
         NULL,                  // Parameters to pass
         5,                     // Task priority
         NULL                   // Task handle output

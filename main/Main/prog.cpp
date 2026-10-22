@@ -115,7 +115,7 @@ int16_t max_sample = 0;
             ESP_LOGW("++++++++++++", "Failed to read audio samples, retrying...");
         }
 
-        //vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
+       vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
     }
 
 
