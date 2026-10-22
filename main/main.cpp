@@ -261,7 +261,7 @@ extern "C" void app_main()
     xTaskCreate(
         app_run_loop,          // Task function
         "app_run_loop_task",   // Task name for debugging
-        8192,                  // Stack depth (bytes)
+        32768,                  // Stack depth (bytes)
         NULL,                  // Parameters to pass
         5,                     // Task priority
         NULL                   // Task handle output
@@ -363,7 +363,7 @@ lc3_decoder_t decoder = lc3_setup_decoder(frame_duration_us, sample_rate, 0, dec
 
 
 
-#if defined (OpusTest)
+#if defined (OpusDecodeTestPassed)
 
 
 
@@ -428,7 +428,7 @@ extern "C" void app_main(void) {
 
 
 
-#if defined (OpusClassTest)
+#if defined (OpusClassDecodeTest)
  #include <stdio.h>
 #include <vector>
 #include <cmath>
@@ -685,7 +685,7 @@ extern "C" void app_main(void) {
 
 
 
-#if defined (OpusEncodeClassTest) 
+#if defined (OpusEncodeClassTest1) 
 
 #include <stdio.h>
 #include <vector>
@@ -771,6 +771,227 @@ extern "C" void app_main(void) {
 }
  
 #endif
+
+
+#if defined (OpusEncodeClassTestLoopPassed) 
+
+#include <stdio.h>
+#include <vector>
+#include <cmath>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// Include your custom C++ class header
+#include "Opus.hpp"
+
+extern "C" {
+    #include "esp_audio_enc_default.h" // Required to register backend codecs into the registry framework
+}
+
+static const char* TAG = "OPUS_CLASS_TEST";
+
+static void opus_class_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting continuous SimpleOpusEncoder class test task...");
+
+    // 1. Register default audio codecs into Espressif's common registry table
+    esp_audio_err_t reg_err = esp_audio_enc_register_default();
+    if (reg_err != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "Failed to register default audio encoders: 0x%x", reg_err);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 2. Configure the encoder settings matching your struct fields
+    SimpleOpusEncoder::Config config;
+    config.sample_rate = 16000;
+    config.channels = 1;
+    config.frame_duration_ms = 10; // 10ms frame duration
+
+    // 3. Instantiate your wrapper class
+    SimpleOpusEncoder encoder(config);
+
+    // 4. Initialize the encoder (opens handle and queries frame sizes)
+    if (encoder.init() != ESP_OK) {
+        ESP_LOGE(TAG, "SimpleOpusEncoder initialization failed!");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 5. Calculate exact sample count expected per frame:
+    // formula: (sample_rate * frame_duration_ms) / 1000 * channels
+    size_t expected_samples = (config.sample_rate * config.frame_duration_ms) / 1000 * config.channels;
+    
+    ESP_LOGI(TAG, "Preparing PCM frame buffer of size: %zu samples", expected_samples);
+    std::vector<int16_t> pcm_samples(expected_samples);
+    
+    uint32_t max_out_size = 512;
+    uint32_t frame_counter = 0;
+
+    // 6. Continuous loop test
+    ESP_LOGI(TAG, "Entering continuous encoding loop...");
+    while (true) {
+        // Fill frame with a rolling 440Hz sine wave signal (simulating real live audio input)
+        for (size_t i = 0; i < expected_samples; i++) {
+            float t = (float)(frame_counter * expected_samples + i) / (float)config.sample_rate;
+            pcm_samples[i] = (int16_t)(8000.0f * sinf(2.0f * 3.14159f * 440.0f * t));
+        }
+
+        // Call the vector overload method to encode the PCM block
+        std::vector<uint8_t> compressed_data = encoder.encode(pcm_samples, max_out_size);
+
+        if (!compressed_data.empty()) {
+          
+                ESP_LOGI(TAG, "Frame [%u] SUCCESS! Encoded Opus packet size: %u bytes", 
+                         (unsigned int)frame_counter, (unsigned int)compressed_data.size());
+            
+        } else {
+            ESP_LOGE(TAG, "Frame [%u] Encoding failed or returned empty payload.", (unsigned int)frame_counter);
+        }
+
+        frame_counter++;
+
+        // Yield to the FreeRTOS kernel and keep the Task Watchdog Timer (WDT) happy
+        vTaskDelay(pdMS_TO_TICKS(10)); 
+    }
+
+    // (Unreachable cleanup code, kept for structural completeness if loop ever breaks)
+    encoder.deinit();
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started. Spawning continuous encoder test task with 32KB stack...");
+    
+    // Spin up in a dedicated FreeRTOS task with 32KB stack to accommodate Opus heap/stack requirements
+    xTaskCreate(opus_class_test_task, "opus_class_test_task", 32768, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+#if defined (OpusEncodeClassTest) 
+
+#include <stdio.h>
+#include <vector>
+#include <cmath>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// Include your custom C++ class header
+#include "Opus.hpp"
+
+extern "C" {
+    #include "esp_audio_enc_default.h" // Required to register backend codecs into the registry framework
+}
+
+static const char* TAG = "OPUS_CLASS_TEST";
+
+static void opus_class_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting continuous SimpleOpusEncoder class test task...");
+
+    // 1. Register default audio codecs into Espressif's common registry table
+    esp_audio_err_t reg_err = esp_audio_enc_register_default();
+    if (reg_err != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "Failed to register default audio encoders: 0x%x", reg_err);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 2. Configure the encoder settings matching your struct fields
+    SimpleOpusEncoder::Config config;
+    config.sample_rate = 16000;
+    config.channels = 2;
+    config.frame_duration_ms = 20; // 10ms frame duration
+
+    // 3. Instantiate your wrapper class
+    SimpleOpusEncoder encoder(config);
+
+    // 4. Initialize the encoder (opens handle and queries frame sizes)
+    if (encoder.init() != ESP_OK) {
+        ESP_LOGE(TAG, "SimpleOpusEncoder initialization failed!");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // 5. Calculate exact sample count expected per frame:
+    // formula: (sample_rate * frame_duration_ms) / 1000 * channels
+    size_t expected_samples = (config.sample_rate * config.frame_duration_ms) / 1000 * config.channels;
+    
+    ESP_LOGI(TAG, "Preparing PCM frame buffer of size: %zu samples", expected_samples);
+    std::vector<int16_t> pcm_samples(expected_samples);
+    
+    uint32_t max_out_size = 512;
+    uint32_t frame_counter = 0;
+
+    // 6. Continuous loop test
+    ESP_LOGI(TAG, "Entering continuous encoding loop...");
+    while (true) {
+        // Fill frame with a rolling 440Hz sine wave signal (simulating real live audio input)
+        for (size_t i = 0; i < expected_samples; i++) {
+            float t = (float)(frame_counter * expected_samples + i) / (float)config.sample_rate;
+            pcm_samples[i] = (int16_t)(8000.0f * sinf(2.0f * 3.14159f * 440.0f * t));
+        }
+
+        // Call the vector overload method to encode the PCM block
+        std::vector<uint8_t> compressed_data = encoder.encode(pcm_samples, max_out_size);
+
+        if (!compressed_data.empty()) {
+          
+                ESP_LOGI(TAG, "Frame [%u] SUCCESS! Encoded Opus packet size: %u bytes", 
+                         (unsigned int)frame_counter, (unsigned int)compressed_data.size());
+            
+        } else {
+            ESP_LOGE(TAG, "Frame [%u] Encoding failed or returned empty payload.", (unsigned int)frame_counter);
+        }
+
+        frame_counter++;
+
+        // Yield to the FreeRTOS kernel and keep the Task Watchdog Timer (WDT) happy
+        vTaskDelay(pdMS_TO_TICKS(10)); 
+    }
+
+    // (Unreachable cleanup code, kept for structural completeness if loop ever breaks)
+    encoder.deinit();
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started. Spawning continuous encoder test task with 32KB stack...");
+    
+    // Spin up in a dedicated FreeRTOS task with 32KB stack to accommodate Opus heap/stack requirements
+    xTaskCreate(opus_class_test_task, "opus_class_test_task", 32768, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
  #if defined (FileVectorTest1)
 

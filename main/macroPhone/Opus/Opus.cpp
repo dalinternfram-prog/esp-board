@@ -678,7 +678,11 @@ esp_err_t SimpleOpusEncoder::init() {
         ESP_LOGW(TAG, "Encoder handle already initialized");
         return ESP_OK;
     }
-
+// --> CRITICAL FIX: Register default audio encoders before opening any encoder <--
+    esp_err_t reg_err = esp_audio_enc_register_default();
+    if (reg_err != ESP_OK) {
+        ESP_LOGE("APP_LOOP", "Failed to register default audio encoders: %d", reg_err);
+    }
     // Set standard target bitrate based on sampling rate (32 kbps for <=16kHz, 64 kbps for >16kHz)
     int default_bitrate = (m_config.sample_rate >= 24000) ? 64000 : 32000;
 
@@ -774,8 +778,8 @@ int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* 
     out_frame.pts = 0;                      // Initialize presentation timestamp to zero
 
     // Perform actual Opus compression encoding
-    ESP_LOGI(TAG, "Encoding check: pcm_samples.size() = %u, out_buffer_max_size = %u", 
-             (unsigned int)pcm_samples.size(), (unsigned int)out_buffer_max_size);
+    // ESP_LOGI(TAG, "Encoding check: pcm_samples.size() = %u, out_buffer_max_size = %u", 
+    //          (unsigned int)pcm_samples.size(), (unsigned int)out_buffer_max_size);
 
     // CHANGED: Mathematically calculated expected total sample count based on sample rate, channels, and duration (e.g., 16000 * 2 channels * 0.020s = 640 samples)
     size_t expected_samples_per_channel = (m_config.sample_rate * m_config.frame_duration_ms) / 1000;
@@ -785,7 +789,7 @@ int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* 
         ESP_LOGE(TAG, "CRITICAL: PCM sample count mismatch! Expected %zu, got %u", expected_total_samples, (unsigned int)pcm_samples.size());
     }
 
-    ESP_LOGI("++++++++++++", "before esp_opus_enc_process  ");
+   // ESP_LOGI("++++++++++++", "before esp_opus_enc_process  ");
     esp_audio_err_t err = esp_audio_enc_process(m_handle, &in_frame, &out_frame);
 
    /// ESP_LOGI("++++++++++++", "success esp_opus_enc_process  ");
@@ -807,7 +811,7 @@ int SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint8_t* 
 // Convenient overload function: returns compressed payload inside a standard std::vector
 std::vector<uint8_t> SimpleOpusEncoder::encode(const std::vector<int16_t>& pcm_samples, uint32_t max_output_size) {
     // Allocate temporary vector with maximum allocated capacity
-    ESP_LOGI("++++++++++++", "before  std::vector<uint8_t> output_vec(max_output_size);");
+  //  ESP_LOGI("++++++++++++", "before  std::vector<uint8_t> output_vec(max_output_size);");
     std::vector<uint8_t> output_vec(max_output_size); 
     // Call raw buffer encoding method passing vector buffer memory
     int bytes_written = encode(pcm_samples, output_vec.data(), max_output_size);
