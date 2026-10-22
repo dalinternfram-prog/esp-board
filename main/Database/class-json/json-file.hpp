@@ -263,7 +263,12 @@ namespace file { // Begins the json_file namespace wrapper
 //* this class will call vector file,which is another class,the filename will becomes filename and filename.json;
 
 class JsonFileStore {
+
+    public:constexpr static const char* TAG = "JsonFileStore";
 private:
+
+
+
     fileVector fVec_; // Reusable fileVector storage instance
 
     // Template function validation for plain structs
@@ -390,7 +395,8 @@ public:
         offset += sizeof(size_t); // Advance offset past struct size metadata field
 
         if (structSize != sizeof(T)) { // Verify that stored struct size matches current type T size
-            throw std::runtime_error("Struct size mismatch during modification."); // Throw error if sizes do not match
+                  ESP_LOGE(TAG, "Struct size mismatch during modification.");return;
+           // throw std::runtime_error("Struct size mismatch during modification."); // Throw error if sizes do not match
         } // End of size verification conditional block
 
         // 4. Overwrite the old struct payload bytes with the new instance bytes inside the block buffer
@@ -399,7 +405,8 @@ public:
         // 5 & 6. Delegate the binary write, size checking, and JSON metadata timestamp update to fileVector::modify
         bool success = fVec_.modify(block, static_cast<int>(blockIndexToModify)); // Call fileVector modify method with updated block
         if (!success) { // Check if the file write operation failed
-            throw std::runtime_error("Failed to write modified block to fileVector storage."); // Throw error if write failed
+                    ESP_LOGE(TAG, "Failed to write modified block to fileVector storage.");return;
+           // throw std::runtime_error("Failed to write modified block to fileVector storage."); // Throw error if write failed
         } // End of success check conditional block
     } // End of modify function
 
@@ -468,6 +475,14 @@ public:
 
         return instance; // Return the popped struct instance
     } // End of Pop function
+
+
+    /**
+     * @brief Completely deletes the underlying binary storage and JSON metadata files.
+     */
+    void Delete() {
+        fVec_.Delete();
+    }
 
 }; // Closes the JsonFileStore class
 

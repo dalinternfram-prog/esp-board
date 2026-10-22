@@ -183,5 +183,8 @@ public:
      *         the file manager is unavailable, or the new data size does not match the existing element's size.
      */
     bool modify(const std::vector<uint8_t>& data, int i=-1);
+
+
+    void Delete();
 };
 }

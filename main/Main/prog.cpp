@@ -18,6 +18,10 @@
 #include "WiFiManager.hpp" 
 #include "Opus.hpp"
 #include "Lc3.hpp"
+#include "file_manager.hpp"
+#include "firmware_switch.hpp"
+#include "wifi/shared.hpp"
+#include "Net manager.hpp"
 //**
 // 
 // idf.py monitor
@@ -145,7 +149,36 @@ void app_run_loop(
 
 
 } 
+// This function acts as the FreeRTOS task routine
+void app_run_loop(void* pvParameters) {
+    ESP_LOGI("APP_LOOP", "Starting application run loop task...");
 
+    // 1. Instantiate core components
+    auto nvsManager = std::make_shared<NvsManager>();
+    auto firmwareSwitch = std::make_shared<FirmwareSwitch>();
+
+    // 2. Initialize drivers and services
+    nvsManager->init();
+    firmwareSwitch->init();
+    FileManager::init();
+    wifi::init();
+    Network::init(222);
+
+    ESP_LOGI("APP_LOOP", "All systems initialized successfully. Entering main loop.");
+
+    // 3. Main Application Run Loop
+    while (true) {
+        // TODO: Perform periodic application tasks here 
+        // (e.g., polling sensors, checking network status, handling state transitions)
+
+        // Yield control to FreeRTOS (e.g., delay for 1 second)
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    // (Optional cleanup if the loop ever breaks)
+    FileManager::deinit();
+    vTaskDelete(NULL);
+}
 
 
 

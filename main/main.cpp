@@ -16,10 +16,7 @@
 #include "macroPhone/arguments.hpp" 
 #include "nvs_manager.hpp"
 #include <memory>
-#include "file_manager.hpp"
-#include "firmware_switch.hpp"
-#include "wifi/shared.hpp"
-#include "Net manager.hpp"
+
 // CHANGED: Added const to fix "ISO C++ forbids converting a string constant to 'char*'" warning
 static const char *TAG = "app main";
 
@@ -29,10 +26,8 @@ static uint16_t Search_mp3_file_count = 0;
 static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
 
-void app_run_loop( 
-     std::shared_ptr<NvsManager> nvsManager, 
-     std::shared_ptr<FirmwareSwitch> firmwareSwitch
-);
+ 
+void app_run_loop(void* pvParameters);
 // 按键回调函数
 static void on_key_event(key_id_t id, key_event_t event, void *user_data) 
 {
@@ -260,25 +255,19 @@ extern "C" void app_main()
 
             ESP_LOGI("++++++++++++","success Search_mp3_Music" );
  
+ ESP_LOGI("MAIN", "Initializing system from app_main...");
 
-std::shared_ptr<NvsManager> NvsManager_class=std::make_shared<NvsManager>();
- 
+    // Create the application loop task with a safe stack size (e.g., 8192 bytes) and priority 5
+    xTaskCreate(
+        app_run_loop,          // Task function
+        "app_run_loop_task",   // Task name for debugging
+        8192,                  // Stack depth (bytes)
+        NULL,                  // Parameters to pass
+        5,                     // Task priority
+        NULL                   // Task handle output
+    );
 
-std::shared_ptr<FirmwareSwitch> FirmwareSwitch_class=std::make_shared<FirmwareSwitch>();
-
-
-NvsManager_class->init(); 
-FirmwareSwitch_class->init();
-
-FileManager::init();
-
-
-wifi::init();
-
-Network::init(222);
- app_run_loop( NvsManager_class, FirmwareSwitch_class);
-
-   // xTaskCreate(opus_class_test_task, "opus_class_test_task", 32768, NULL, 5, NULL);
+    ESP_LOGI("MAIN", "app_main returning; application task running in background.");
 }
 
 #endif
@@ -781,4 +770,679 @@ extern "C" void app_main(void) {
     xTaskCreate(opus_class_test_task, "opus_class_test_task", 32768, NULL, 5, NULL);
 }
  
+#endif
+
+ #if defined (FileVectorTest1)
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "file-vector.hpp"
+#include "file_manager.hpp" // For file deletion helpers
+
+static const char* TAG = "FILE_VECTOR_TEST";
+
+static void file_vector_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting fileVector API test task...");
+
+    // 1. Initialize storage
+    FileManager::init();
+
+    std::string base_name = "opus_test_storage";
+    std::string bin_file = base_name;
+    std::string json_file = base_name + ".json";
+
+    // CLEAN UP OLD RUNS: Delete leftover files so we start fresh every boot
+    if (FileManager::exists(bin_file))  FileManager::deleteFile(bin_file);
+    if (FileManager::exists(json_file)) FileManager::deleteFile(json_file);
+
+    // 2. Instantiate fileVector
+    file::fileVector fv(base_name);
+
+    // 3. Prepare mock byte packets (making sure we know their exact sizes)
+    std::vector<uint8_t> packet1 = {0x01, 0x02, 0x03, 0x04, 0x05}; // 5 bytes
+    std::vector<uint8_t> packet2 = {0x0A, 0x0B, 0x0C, 0x0D};        // 4 bytes
+    std::vector<uint8_t> packet3 = {0xFF, 0xEE, 0xDD};              // 3 bytes
+
+    ESP_LOGI(TAG, "--- Testing push_back ---");
+    fv.push_back(packet1);
+    fv.push_back(packet2);
+    fv.push_back(packet3);
+
+    // 4. Test GetCurrentSize
+    size_t count = fv.GetCurrentSize();
+    ESP_LOGI(TAG, "Current stored element count: %u (Expected: 3)", (unsigned int)count);
+
+    // 5. Test Fetch (Positive and negative indices)
+    ESP_LOGI(TAG, "--- Testing Fetch ---");
+    auto fetched0 = fv.Fetch(0);
+    auto fetchedLast = fv.Fetch(-1); // -1 targets the last element
+
+    ESP_LOGI(TAG, "Fetched index 0 size: %u bytes (Expected: 5)", (unsigned int)fetched0.size());
+    ESP_LOGI(TAG, "Fetched index -1 (last) size: %u bytes (Expected: 3)", (unsigned int)fetchedLast.size());
+
+    // 6. Test modify 
+    ESP_LOGI(TAG, "--- Testing modify ---");
+    std::vector<uint8_t> new_data = {0x99, 0x98, 0x97, 0x96, 0x95}; // 5 bytes to match packet1
+    bool mod_success = fv.modify(new_data, 0);
+    ESP_LOGI(TAG, "Modify index 0 result: %s", mod_success ? "SUCCESS" : "FAILED");
+
+    // Verify modification took effect
+    auto fetchedModified = fv.Fetch(0);
+    if (!fetchedModified.empty()) {
+        ESP_LOGI(TAG, "Modified item first byte: 0x%02X (Expected: 0x99)", fetchedModified[0]);
+    }
+
+    // 7. Test Pop (Back: i = -1)
+    ESP_LOGI(TAG, "--- Testing Pop (Back) ---");
+    auto popped_back = fv.Pop(-1);
+    ESP_LOGI(TAG, "Popped back size: %u bytes | Remaining elements: %u", 
+             (unsigned int)popped_back.size(), (unsigned int)fv.GetCurrentSize());
+
+    // 8. Test Pop (Front: i = 0)
+    ESP_LOGI(TAG, "--- Testing Pop (Front) ---");
+    auto popped_front = fv.Pop(0);
+    ESP_LOGI(TAG, "Popped front size: %u bytes | Remaining elements: %u", 
+             (unsigned int)popped_front.size(), (unsigned int)fv.GetCurrentSize());
+
+    ESP_LOGI(TAG, "fileVector API test task completed successfully!");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started. Spawning fileVector test task...");
+    xTaskCreate(file_vector_test_task, "file_vector_test_task", 8192, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+
+
+
+#if defined (FileVectorTest)
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "file-vector.hpp"
+#include "file_manager.hpp"
+
+static const char* TAG = "FILE_VECTOR_TEST";
+
+static void file_vector_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting comprehensive fileVector API test task...");
+
+    FileManager::init();
+
+    std::string base_name = "opus_test_storage";
+    std::string bin_file = base_name;
+    std::string json_file = base_name + ".json";
+
+    // Clean start
+    if (FileManager::exists(bin_file))  FileManager::deleteFile(bin_file);
+    if (FileManager::exists(json_file)) FileManager::deleteFile(json_file);
+
+    file::fileVector fv(base_name);
+
+    // 1. Push 5 distinct packets of varying sizes to create a rich dataset
+    std::vector<uint8_t> p0 = {0xAA, 0xAA};                     // 2 bytes (Index 0)
+    std::vector<uint8_t> p1 = {0x11, 0x11, 0x11};               // 3 bytes (Index 1)
+    std::vector<uint8_t> p2 = {0x22, 0x22, 0x22, 0x22};         // 4 bytes (Index 2 - General middle target)
+    std::vector<uint8_t> p3 = {0x33, 0x33, 0x33, 0x33, 0x33};   // 5 bytes (Index 3)
+    std::vector<uint8_t> p4 = {0xFF, 0xFF};                     // 2 bytes (Index 4 - Back)
+
+    fv.push_back(p0);
+    fv.push_back(p1);
+    fv.push_back(p2);
+    fv.push_back(p3);
+    fv.push_back(p4);
+
+    ESP_LOGI(TAG, "Initial count: %u (Expected: 5)", (unsigned int)fv.GetCurrentSize());
+
+    // 2. Test Fetch on a general middle index (Index 2)
+    ESP_LOGI(TAG, "--- Testing Fetch on middle index (2) ---");
+    auto fetched_mid = fv.Fetch(2);
+    ESP_LOGI(TAG, "Fetched index 2 size: %u bytes (Expected: 4)", (unsigned int)fetched_mid.size());
+    if (!fetched_mid.empty()) {
+        ESP_LOGI(TAG, "Index 2 first byte: 0x%02X (Expected: 0x22)", fetched_mid[0]);
+    }
+
+    // 3. Test modify on a general middle index (Index 2)
+    // Note: must match the exact size of index 2 (4 bytes)
+    ESP_LOGI(TAG, "--- Testing modify on middle index (2) ---");
+    std::vector<uint8_t> new_mid_data = {0x99, 0x88, 0x77, 0x66};
+    bool mod_mid = fv.modify(new_mid_data, 2);
+    ESP_LOGI(TAG, "Modify index 2 result: %s", mod_mid ? "SUCCESS" : "FAILED");
+
+    // Verify modification
+    auto fetched_mod_mid = fv.Fetch(2);
+    if (!fetched_mod_mid.empty()) {
+        ESP_LOGI(TAG, "Modified index 2 first byte: 0x%02X (Expected: 0x99)", fetched_mod_mid[0]);
+    }
+
+    // 4. Test Pop on a general middle index (Index 1)
+    // This will test whether byte shifting and offset compaction work properly in the middle!
+    ESP_LOGI(TAG, "--- Testing Pop on middle index (1) ---");
+    size_t count_before_pop = fv.GetCurrentSize();
+    auto popped_mid = fv.Pop(1);
+    ESP_LOGI(TAG, "Popped middle index 1 size: %u bytes (Expected: 3)", (unsigned int)popped_mid.size());
+    ESP_LOGI(TAG, "Remaining count after middle pop: %u (Expected: %u)", 
+             (unsigned int)fv.GetCurrentSize(), (unsigned int)(count_before_pop - 1));
+
+    // 5. Verify that indices shifted correctly after popping index 1 
+    // (What used to be index 2 should now be at index 1!)
+    auto shifted_check = fv.Fetch(1);
+    if (!shifted_check.empty()) {
+        ESP_LOGI(TAG, "New item at index 1 first byte: 0x%02X (Expected: 0x99 from our modified data)", shifted_check[0]);
+    }
+
+    ESP_LOGI(TAG, "Comprehensive fileVector test completed successfully!");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    xTaskCreate(file_vector_test_task, "file_vector_test_task", 8192, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+#if defined (FileManagerTest)
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// Include your file manager header
+#include "file_manager.hpp"
+
+static const char* TAG = "FILE_MANAGER_TEST";
+
+static void file_manager_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting FileManager API test task...");
+
+    // 1. Initialize storage
+    esp_err_t init_err = FileManager::init();
+    if (init_err != ESP_OK) {
+        ESP_LOGE(TAG, "FileManager initialization failed: 0x%x", init_err);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    std::string test_filename = "test_data.bin";
+
+    // Clean up any leftover file from previous runs
+    if (FileManager::exists(test_filename)) {
+        FileManager::deleteFile(test_filename);
+    }
+
+    // 2. Test storage statistics
+    size_t total_bytes = 0, free_bytes = 0;
+    if (FileManager::getStorageStats(&total_bytes, &free_bytes)) {
+        ESP_LOGI(TAG, "Storage Stats -> Total: %u bytes, Free: %u bytes", 
+                 (unsigned int)total_bytes, (unsigned int)free_bytes);
+    } else {
+        ESP_LOGW(TAG, "Failed to retrieve storage stats.");
+    }
+
+    // 3. Test writing binary data (Offset = 0: creates/overwrites file)
+    ESP_LOGI(TAG, "--- Testing writeFile (New file / Offset 0) ---");
+    std::vector<uint8_t> initial_data = {0x10, 0x20, 0x30, 0x40, 0x50}; // 5 bytes
+    bool write_ok = FileManager::writeFile(test_filename, initial_data, 0);
+    ESP_LOGI(TAG, "Write offset 0 result: %s", write_ok ? "SUCCESS" : "FAILED");
+
+    // 4. Test reading binary data back
+    ESP_LOGI(TAG, "--- Testing readFileBytes ---");
+    // Read all bytes starting from offset 0 (size = -1)
+    std::vector<uint8_t> read_data = FileManager::readFileBytes(test_filename, 0, -1);
+    ESP_LOGI(TAG, "Read back size: %u bytes (Expected: 5)", (unsigned int)read_data.size());
+    if (read_data.size() == 5) {
+        ESP_LOGI(TAG, "Data matches: 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X", 
+                 read_data[0], read_data[1], read_data[2], read_data[3], read_data[4]);
+    }
+
+    // 5. Test append mode (Offset < 0 according to your docstring)
+    ESP_LOGI(TAG, "--- Testing writeFile (Append mode / Offset < 0) ---");
+    std::vector<uint8_t> append_data = {0xAA, 0xBB, 0xCC}; // 3 bytes
+    bool append_ok = FileManager::writeFile(test_filename, append_data, -1); // negative offset triggers append
+    ESP_LOGI(TAG, "Append result: %s", append_ok ? "SUCCESS" : "FAILED");
+
+    // Read back entire file again to see if it appended or overwritten
+    std::vector<uint8_t> full_data = FileManager::readFileBytes(test_filename, 0, -1);
+    ESP_LOGI(TAG, "Post-append total size: %u bytes (Expected: 8)", (unsigned int)full_data.size());
+    if (full_data.size() == 8) {
+        ESP_LOGI(TAG, "Append verified successfully! Last byte: 0x%02X (Expected: 0xCC)", full_data.back());
+    } else {
+        ESP_LOGE(TAG, "CRITICAL: Append test failed! File size is %u instead of 8. writeFile with offset < 0 might be overwriting instead of appending!", (unsigned int)full_data.size());
+    }
+
+    // 6. Test file existence & deletion
+    ESP_LOGI(TAG, "--- Testing exists and deleteFile ---");
+    bool file_exists = FileManager::exists(test_filename);
+    ESP_LOGI(TAG, "File exists check: %s", file_exists ? "YES" : "NO");
+
+    bool deleted = FileManager::deleteFile(test_filename);
+    ESP_LOGI(TAG, "Delete file result: %s", deleted ? "SUCCESS" : "FAILED");
+    ESP_LOGI(TAG, "File exists after delete: %s", FileManager::exists(test_filename) ? "YES" : "NO");
+
+    // 7. Deinit storage
+    FileManager::deinit();
+    ESP_LOGI(TAG, "FileManager test task completed successfully!");
+    
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "App main started. Spawning FileManager test task...");
+    
+    // Spawn test task with 8KB stack
+    xTaskCreate(file_manager_test_task, "file_manager_test_task", 8192, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if defined (ShiftBytesTest1)
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "file_manager.hpp"
+
+static const char* TAG = "SHIFT_BYTES_TEST";
+
+static void shift_bytes_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting FileManager::shiftBytes test task...");
+
+    FileManager::init();
+
+    std::string test_file = "shift_test.bin";
+    if (FileManager::exists(test_file)) {
+        FileManager::deleteFile(test_file);
+    }
+
+    // 1. Create a file with 10 sequential bytes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    std::vector<uint8_t> initial_data = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
+    FileManager::writeFile(test_file, initial_data, 0);
+
+    ESP_LOGI(TAG, "Initial file created (10 bytes).");
+
+    // 2. Test Left Shift (Compaction)
+    // Let's shift bytes left by 2 units, starting from offset 2 up to the end.
+    // Expected behavior: Bytes at index 2 and 3 ([0x02, 0x03]) should be overwritten 
+    // by the subsequent bytes shifting down, shrinking the active data window.
+    // Parameters: filename, shiftDistance, left (true), startOffset, endOffset
+    ESP_LOGI(TAG, "--- Testing shiftBytes (Left shift by 2 starting at offset 2) ---");
+    
+    // Assuming signature: shiftBytes(filename, distance, left, startOffset, endOffset)
+    // Let's pass startOffset = 2, endOffset = 10 (or -1 for EOF)
+    FileManager::shiftBytes(test_file, 2, true, 2, -1);
+
+    // 3. Read back the file to inspect the resulting byte sequence
+    std::vector<uint8_t> result_data = FileManager::readFileBytes(test_file, 0, -1);
+    
+    ESP_LOGI(TAG, "Result file size after left shift: %u bytes", (unsigned int)result_data.size());
+    
+    std::string hex_str = "";
+    for (uint8_t b : result_data) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "0x%02X ", b);
+        hex_str += buf;
+    }
+    ESP_LOGI(TAG, "Resulting bytes: %s", hex_str.c_str());
+
+    // Clean up
+    FileManager::deleteFile(test_file);
+    FileManager::deinit();
+
+    ESP_LOGI(TAG, "shiftBytes test task completed.");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    xTaskCreate(shift_bytes_test_task, "shift_bytes_test_task", 8192, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if defined (ShiftBytesTest3)
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "file_manager.hpp"
+
+static const char* TAG = "SHIFT_BYTES_TEST";
+
+static void shift_bytes_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting updated FileManager::shiftBytes test task...");
+
+    FileManager::init();
+
+    std::string test_file = "shift_test.bin";
+    if (FileManager::exists(test_file)) {
+        FileManager::deleteFile(test_file);
+    }
+
+    // 1. Create a file with 10 sequential bytes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    std::vector<uint8_t> initial_data = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
+    FileManager::writeFile(test_file, initial_data, 0);
+
+    ESP_LOGI(TAG, "Initial file created (10 bytes): 00 01 02 03 04 05 06 07 08 09");
+
+    // 2. Test Left Shift (Compaction)
+    // Scenario: We want to remove a 2-byte hole at index 2 (bytes 0x02 and 0x03).
+    // - Hole starts at offset: 2
+    // - Hole size (shiftDistance): 2 bytes
+    // - The data we want to move starts at offset: 2 + 2 = 4 (which is 0x04)
+    // We tell shiftBytes: move data starting at offset 4 left by 2 bytes.
+    ESP_LOGI(TAG, "--- Testing Left Shift (moving data from offset 4 left by 2 bytes) ---");
+    
+    FileManager::shiftBytes(test_file, 2, true, 4, -1);
+
+    // 3. Read back the file to inspect the shifted bytes
+    std::vector<uint8_t> result_data = FileManager::readFileBytes(test_file, 0, -1);
+    
+    std::string hex_str = "";
+    for (uint8_t b : result_data) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "0x%02X ", b);
+        hex_str += buf;
+    }
+    ESP_LOGI(TAG, "Resulting bytes: %s", hex_str.c_str());
+
+    // Clean up
+    FileManager::deleteFile(test_file);
+    FileManager::deinit();
+
+    ESP_LOGI(TAG, "shiftBytes test task completed.");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    xTaskCreate(shift_bytes_test_task, "shift_bytes_test_task", 8192, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+#if defined (ShiftBytesTest)
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "file_manager.hpp"
+
+static const char* TAG = "SHIFT_BYTES_TEST";
+
+static void print_bytes(const std::string& prefix, const std::vector<uint8_t>& data) {
+    std::string hex_str = "";
+    for (uint8_t b : data) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "0x%02X ", b);
+        hex_str += buf;
+    }
+    ESP_LOGI(TAG, "%s: %s (size: %u)", prefix.c_str(), hex_str.c_str(), (unsigned int)data.size());
+}
+
+static void shift_bytes_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting comprehensive FileManager::shiftBytes test (Left & Right)...");
+
+    FileManager::init();
+
+    std::string test_file = "shift_general_test.bin";
+
+    // ==========================================
+    // TEST 1: General Left Shift (Compaction)
+    // ==========================================
+    if (FileManager::exists(test_file)) FileManager::deleteFile(test_file);
+
+    std::vector<uint8_t> init_left = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
+    FileManager::writeFile(test_file, init_left, 0);
+    print_bytes("Initial Left-Shift File", FileManager::readFileBytes(test_file, 0, -1));
+
+    // Scenario: Remove a 2-byte block at index 3 and 4 ([0x03, 0x04])
+    // - Data to move starts at offset: 5 (values [0x05...])
+    // - Shift distance: 2 bytes
+    // - End offset: 10 (EOF)
+    size_t shift_dist = 2;
+    long start_off = 5;
+    long end_off = 10;
+
+    FileManager::shiftBytes(test_file, shift_dist, true, start_off, end_off);
+    FileManager::truncate(test_file, init_left.size() - shift_dist);
+
+    print_bytes("After Left Shift (Expected: 00 01 02 05 06 07 08 09)", FileManager::readFileBytes(test_file, 0, -1));
+
+    // ==========================================
+    // TEST 2: General Right Shift (Expansion / Insertion Gap)
+    // ==========================================
+    if (FileManager::exists(test_file)) FileManager::deleteFile(test_file);
+
+    std::vector<uint8_t> init_right = {0x10, 0x20, 0x30, 0x40, 0x50}; // 5 bytes
+    FileManager::writeFile(test_file, init_right, 0);
+    print_bytes("Initial Right-Shift File", FileManager::readFileBytes(test_file, 0, -1));
+
+    // Scenario: Create a 2-byte insertion hole starting at index 2 (values [0x30, 0x40, 0x50] move right)
+    // - Region to move starts at offset: 2
+    // - Shift distance: 2 bytes
+    // - End offset: 5 (EOF)
+    size_t r_shift_dist = 2;
+    long r_start_off = 2;
+    long r_end_off = 5;
+
+    FileManager::shiftBytes(test_file, r_shift_dist, false, r_start_off, r_end_off);
+
+    print_bytes("After Right Shift (Expected data at offset 4+: 30 40 50)", FileManager::readFileBytes(test_file, 0, -1));
+
+    // Clean up
+    FileManager::deleteFile(test_file);
+    FileManager::deinit();
+
+    ESP_LOGI(TAG, "Comprehensive shiftBytes test task completed.");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    xTaskCreate(shift_bytes_test_task, "shift_bytes_test_task", 8192, NULL, 5, NULL);
+}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if defined (JsonFileStoreTest)
+
+#include <stdio.h>
+#include <string>
+#include <vector>
+#include <cstring>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "file_manager.hpp"
+#include "file-vector.hpp"
+#include "Database/class-json/json-file.hpp" // Adjust header name to match your file
+
+static const char* TAG = "JSON_FILE_STORE_TEST";
+
+// Define two distinct plain structs for mixed type testing
+struct SensorReading {
+    int id;
+    float value;
+    uint32_t timestamp;
+};
+
+struct DeviceConfig {
+    uint8_t mode;
+    bool enabled;
+    char name[16];
+};
+
+static void json_file_store_test_task(void* pvParameters) {
+    ESP_LOGI(TAG, "Starting comprehensive JsonFileStore test task...");
+
+    FileManager::init();
+
+    std::string store_name = "mixed_device_storage";
+    std::string bin_file = store_name;
+    std::string json_file = store_name + ".json";
+
+    // Clean start
+    if (FileManager::exists(bin_file))  FileManager::deleteFile(bin_file);
+    if (FileManager::exists(json_file)) FileManager::deleteFile(json_file);
+
+    {
+        file::JsonFileStore store(store_name);
+
+        // ==========================================
+        // 1. TEST SAVE & GET SIZE (Mixed Types)
+        // ==========================================
+        ESP_LOGI(TAG, "--- Testing save and GetSize ---");
+
+        SensorReading s1 = {1, 23.5f, 1000};
+        SensorReading s2 = {2, 24.1f, 2000};
+        SensorReading s3 = {3, 25.8f, 3000};
+
+        DeviceConfig c1 = {1, true, "SensorNodeA"};
+        DeviceConfig c2 = {2, false, "SensorNodeB"};
+
+        // Interleave saves of different types
+        store.save(s1); // Sensor index 0
+        store.save(c1); // Config index 0
+        store.save(s2); // Sensor index 1
+        store.save(c2); // Config index 1
+        store.save(s3); // Sensor index 2
+
+        ESP_LOGI(TAG, "SensorReading count: %u (Expected: 3)", (unsigned int)store.GetSize<SensorReading>());
+        ESP_LOGI(TAG, "DeviceConfig count: %u (Expected: 2)", (unsigned int)store.GetSize<DeviceConfig>());
+
+        // ==========================================
+        // 2. TEST FETCH & NEGATIVE INDEXING
+        // ==========================================
+        ESP_LOGI(TAG, "--- Testing fetch and negative indexing ---");
+
+        SensorReading fetched_s_first = store.fetch<SensorReading>(0);
+        SensorReading fetched_s_last  = store.fetch<SensorReading>(-1); // Should be s3
+        DeviceConfig  fetched_c_last  = store.fetch<DeviceConfig>(-1);  // Should be c2
+
+        ESP_LOGI(TAG, "Sensor[0] ID: %d (Expected: 1)", fetched_s_first.id);
+        ESP_LOGI(TAG, "Sensor[-1] ID: %d (Expected: 3)", fetched_s_last.id);
+        ESP_LOGI(TAG, "Config[-1] name: %s (Expected: SensorNodeB)", fetched_c_last.name);
+
+        // ==========================================
+        // 3. TEST MODIFY (In-place update)
+        // ==========================================
+        ESP_LOGI(TAG, "--- Testing modify ---");
+
+        SensorReading updated_s2 = {2, 99.9f, 2222};
+        store.modify(updated_s2, 1); // Modify sensor at type-index 1 (which was s2)
+
+        SensorReading verify_mod = store.fetch<SensorReading>(1);
+        ESP_LOGI(TAG, "Modified Sensor[1] value: %.1f (Expected: 99.9)", verify_mod.value);
+
+        // ==========================================
+        // 4. TEST POP (Middle and End removal with shifting)
+        // ==========================================
+        ESP_LOGI(TAG, "--- Testing Pop ---");
+
+        // Pop the middle sensor reading (index 1, which has value 99.9)
+        SensorReading popped = store.Pop<SensorReading>(1);
+        ESP_LOGI(TAG, "Popped Sensor ID: %d (Expected: 2)", popped.id);
+        ESP_LOGI(TAG, "New SensorReading count: %u (Expected: 2)", (unsigned int)store.GetSize<SensorReading>());
+
+        // Verify remaining sensor indices shifted correctly: 
+        // Sensor[0] should be id 1, Sensor[1] (formerly s3) should now be id 3
+        SensorReading new_s_mid = store.fetch<SensorReading>(1);
+        ESP_LOGI(TAG, "New Sensor[1] ID after pop: %d (Expected: 3)", new_s_mid.id);
+
+        // Verify DeviceConfig records were unaffected by sensor popping
+        ESP_LOGI(TAG, "DeviceConfig count after sensor pop: %u (Expected: 2)", (unsigned int)store.GetSize<DeviceConfig>());
+        DeviceConfig verify_config = store.fetch<DeviceConfig>(0);
+        ESP_LOGI(TAG, "DeviceConfig[0] name: %s (Expected: SensorNodeA)", verify_config.name);
+    }
+
+    // Clean up
+    if (FileManager::exists(bin_file))  FileManager::deleteFile(bin_file);
+    if (FileManager::exists(json_file)) FileManager::deleteFile(json_file);
+    FileManager::deinit();
+
+    ESP_LOGI(TAG, "JsonFileStore test task completed successfully!");
+    vTaskDelete(NULL);
+}
+
+extern "C" void app_main(void) {
+    xTaskCreate(json_file_store_test_task, "json_file_store_test_task", 8192, NULL, 5, NULL);
+}
+
 #endif

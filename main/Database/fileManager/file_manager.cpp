@@ -583,39 +583,108 @@ std::vector<uint8_t> readFileBytes(const std::string& filename, long offset, lon
 
 // Method to shift bytes within a file by a given shiftDistance (left or right)
 // within an optional range [startOffset, endOffset]. Pass negative values (-1) to use defaults.
+// void shiftBytes(const std::string& filename, size_t shiftDistance, bool left, long long startOffset, long long endOffset) {
+//     if (shiftDistance == 0) return;
+
+//     // Determine total file size using readFileBytes or a helper
+//     // (Opening and checking size via a quick read or fseek internally)
+//     std::string path = getFullPath(filename);
+//     FILE* f = fopen(path.c_str(), "rb");
+//     if (!f) {
+//         ESP_LOGE(TAG, "Failed to open file for shifting: %s", path.c_str());
+//         return;
+//     }
+//     fseek(f, 0, SEEK_END);
+//     long fileSize = ftell(f);
+//     fclose(f);
+
+//     if (fileSize <= 0) return;
+
+//     // Apply rules: if offset < 0, fallback to defaults (0 for start, fileSize for end)
+//     long actualStart = (startOffset < 0) ? 0 : static_cast<long>(startOffset);
+//     long actualEnd = (endOffset < 0 || endOffset > fileSize) ? fileSize : static_cast<long>(endOffset);
+
+//     if (actualStart >= fileSize || actualStart >= actualEnd) return;
+
+//     const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM
+
+//     if (left) {
+//         // --- SHIFT LEFT (Forward iteration: left-to-right) ---
+//         // Move data from (actualStart + shiftDistance) down to actualStart
+//         long srcStart = actualStart + static_cast<long>(shiftDistance);
+//         if (srcStart > actualEnd) srcStart = actualEnd;
+
+//         long currentSrc = srcStart;
+//         long currentDst = actualStart;
+
+//         while (currentSrc < actualEnd) {
+//             size_t bytesToRead = std::min(CHUNK_SIZE, static_cast<size_t>(actualEnd - currentSrc));
+//             std::vector<uint8_t> chunk = readFileBytes(filename, currentSrc, bytesToRead);
+//             if (chunk.empty()) break;
+
+//             if (!writeFile(filename, chunk, currentDst)) {
+//                 ESP_LOGE(TAG, "Failed to write chunk during left shift");
+//                 break;
+//             }
+
+//             currentSrc += chunk.size();
+//             currentDst += chunk.size();
+//         }
+//     } else {
+//         // --- SHIFT RIGHT (Backward iteration: right-to-left) ---
+//         // Move data from actualEnd back to actualStart, shifted right.
+//         // We iterate backwards to prevent overwriting unread data.
+//         long currentSrc = actualEnd;
+
+//         while (currentSrc > actualStart) {
+//             size_t bytesToRead = std::min(CHUNK_SIZE, static_cast<size_t>(currentSrc - actualStart));
+//             currentSrc -= bytesToRead;
+
+//             std::vector<uint8_t> chunk = readFileBytes(filename, currentSrc, bytesToRead);
+//             if (chunk.empty()) break;
+
+//             long targetDst = currentSrc + static_cast<long>(shiftDistance);
+//             // Our updated writeFile automatically handles zero-padding if targetDst exceeds fileSize
+//             if (!writeFile(filename, chunk, targetDst)) {
+//                 ESP_LOGE(TAG, "Failed to write chunk during right shift");
+//                 break;
+//             }
+//         }
+//     }
+// }
+
+
+
+
+
+
+
 void shiftBytes(const std::string& filename, size_t shiftDistance, bool left, long long startOffset, long long endOffset) {
     if (shiftDistance == 0) return;
 
-    // Determine total file size using readFileBytes or a helper
-    // (Opening and checking size via a quick read or fseek internally)
     std::string path = getFullPath(filename);
     FILE* f = fopen(path.c_str(), "rb");
-    if (!f) {
-        ESP_LOGE(TAG, "Failed to open file for shifting: %s", path.c_str());
-        return;
-    }
+    if (!f) return;
     fseek(f, 0, SEEK_END);
     long fileSize = ftell(f);
     fclose(f);
 
     if (fileSize <= 0) return;
 
-    // Apply rules: if offset < 0, fallback to defaults (0 for start, fileSize for end)
     long actualStart = (startOffset < 0) ? 0 : static_cast<long>(startOffset);
     long actualEnd = (endOffset < 0 || endOffset > fileSize) ? fileSize : static_cast<long>(endOffset);
 
     if (actualStart >= fileSize || actualStart >= actualEnd) return;
 
-    const size_t CHUNK_SIZE = 2048; // Fixed 2KB chunk size to protect ESP32 RAM
+    const size_t CHUNK_SIZE = 2048;
 
     if (left) {
-        // --- SHIFT LEFT (Forward iteration: left-to-right) ---
-        // Move data from (actualStart + shiftDistance) down to actualStart
-        long srcStart = actualStart + static_cast<long>(shiftDistance);
-        if (srcStart > actualEnd) srcStart = actualEnd;
-
-        long currentSrc = srcStart;
-        long currentDst = actualStart;
+        // --- SHIFT LEFT ---
+        // Docstring meaning: actualStart is the beginning of the data region to move.
+        // We want to shift this data left by shiftDistance.
+        long currentSrc = actualStart;
+        long currentDst = actualStart - static_cast<long>(shiftDistance);
+        if (currentDst < 0) currentDst = 0; // Safety guard
 
         while (currentSrc < actualEnd) {
             size_t bytesToRead = std::min(CHUNK_SIZE, static_cast<size_t>(actualEnd - currentSrc));
@@ -630,10 +699,11 @@ void shiftBytes(const std::string& filename, size_t shiftDistance, bool left, lo
             currentSrc += chunk.size();
             currentDst += chunk.size();
         }
-    } else {
-        // --- SHIFT RIGHT (Backward iteration: right-to-left) ---
-        // Move data from actualEnd back to actualStart, shifted right.
-        // We iterate backwards to prevent overwriting unread data.
+    } 
+    else {
+        // --- SHIFT RIGHT ---
+        // When shifting right, actualStart is the start of the region to push forward.
+        // We iterate backwards from actualEnd to actualStart.
         long currentSrc = actualEnd;
 
         while (currentSrc > actualStart) {
@@ -644,7 +714,6 @@ void shiftBytes(const std::string& filename, size_t shiftDistance, bool left, lo
             if (chunk.empty()) break;
 
             long targetDst = currentSrc + static_cast<long>(shiftDistance);
-            // Our updated writeFile automatically handles zero-padding if targetDst exceeds fileSize
             if (!writeFile(filename, chunk, targetDst)) {
                 ESP_LOGE(TAG, "Failed to write chunk during right shift");
                 break;
@@ -652,6 +721,56 @@ void shiftBytes(const std::string& filename, size_t shiftDistance, bool left, lo
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Deletes a specified file from the SPIFFS filesystem
 bool deleteFile(const std::string& filename) {
