@@ -102,6 +102,8 @@ std::optional<std::vector<uint8_t>> load_aes_key_from_nvs() ;
 
 
 
+std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() ;
+std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::vector<uint8_t>& peer_public_key);
 
 
 

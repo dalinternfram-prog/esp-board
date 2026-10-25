@@ -15,26 +15,35 @@ namespace Network {
 
 
 
-
+//TODO:this is error now,since we store un-encrypted data here;
     static void  try_send_disk_package(){
         if(!wifi::isConnected())return;
+        if(!completeHandshake)return;
                 // has wifi; we check the unsend one;
             const auto currentSize = packageStoredFile->GetCurrentSize();
             for(int i=0;i<currentSize;++i){
               auto unsend_ = packageStoredFile->Pop();
-             int r = u_KcpClient->send(unsend_.data(), unsend_.size());
-            if (r == -1) {
+ 
+                    auto Opt_encrypted_data = encrytion::aes_gcm_encrypt(unsend_);
+        if (!Opt_encrypted_data.has_value()) return  ;
+
+        auto encrypted_data = Opt_encrypted_data.value();
+
+                   // we encrypt here;
+        int r = u_KcpClient->send(encrypted_data.data(), encrypted_data.size());
+        if (r == -1) {
             ESP_LOGE(TAG, "send failed, reason: unknown");
-            // restart the board;
-             }
+        }
+        return  ;
+
             }
  
     }
     // Initialization (replaces the constructor)
-    void init(uint32_t conv_id) {
+    void init(uint32_t conv_id,const char* host, const char* port) {
         // Initialize your KcpClient here, e.g.:
          u_KcpClient = std::make_unique<KcpClient>(conv_id);
-        
+        u_KcpClient->initialize(host,port);
    
    try_send_disk_package();
 
@@ -56,48 +65,84 @@ namespace Network {
 
 
     }
-
+// TODO: this should create a watch dog to watch the information from server;
     std::vector<uint8_t> poll_and_receive() {
         if (!u_KcpClient) return {};
         
-   try_send_disk_package();
+        
         auto encrypted_data = u_KcpClient->poll_and_receive();
+
+        if(!completeHandshake){
+            //* this is the server public key;
+            //* we extract it ;
+          std::optional<std::vector<uint8_t>> result =   encrytion::ecdh_step2_compute_shared_secret(encrypted_data);
+          if(result.has_value()){
+            // load nvs;
+            aes_key = result.value();
+            completeHandshake=true;
+            return {};
+          }
+        }
         auto Opt_decrypted_data = encrytion::aes_gcm_decrypt(encrypted_data);
 
         if (!Opt_decrypted_data.has_value()) return {};
         return Opt_decrypted_data.value();
     }
-
+// TODO: when it's first send,we don't encrypt;
     int send(const std::vector<uint8_t>& data) {
 
-        
 
+
+// TODO : wifi connected,but handshake haven't it;or wifi is disconnected;
+if(!wifi::isConnected()||!completeHandshake){
+           ESP_LOGI(TAG, "wifi disconnected,or handshake has not finished yet");
+            // store in disk;
+            packageStoredFile->push_back(data);
+            return -1;
+}
+ 
+  
+   try_send_disk_package();
 
         auto Opt_encrypted_data = encrytion::aes_gcm_encrypt(data);
         if (!Opt_encrypted_data.has_value()) return -1;
 
         auto encrypted_data = Opt_encrypted_data.value();
 
-        if (wifi::isConnected()) {
-            
-   try_send_disk_package();
                    // we encrypt here;
         int r = u_KcpClient->send(encrypted_data.data(), encrypted_data.size());
         if (r == -1) {
             ESP_LOGI(TAG, "send failed, reason: unknown");
         }
         return r;
-        }
 
-        else{
-          ESP_LOGI(TAG, "wifi disconnected");
-            // store in disk;
-            packageStoredFile->push_back(encrypted_data);
-            return -1;
-        }
+
+ 
       
 
 
     }
+ bool send_handshakeToServer(){
+if(completeHandshake){
+    
+ESP_LOGE(TAG, "duplicated handshake with server");
+    return false;
+}
 
+std::optional<std::vector<uint8_t>> generated_key =encrytion::ecdh_step1_generate_my_key();
+
+if(!generated_key.has_value()){
+ESP_LOGE(TAG, "!generated_key.has_value()");
+    return false;
+}
+
+        int r = u_KcpClient->send(generated_key.value().data(), generated_key.value().size());
+        if (r == -1) {
+            ESP_LOGI(TAG, "send failed, reason: unknown");
+            return false;
+        }
+   return true;
+ 
+    
+ }
 } // namespace Network

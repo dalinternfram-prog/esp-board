@@ -42,7 +42,7 @@ const char* host ="10.165.11.156";
  const char* ssid="Dalintern device";
   const char* password= "cykcykcyk";  
    const char* TAG = "app_run_loop";
-  
+ 
 // This function acts as the FreeRTOS task routine
 void app_run_loop(void* pvParameters) {
     ESP_LOGI("APP_LOOP", "Starting application run loop task...");
@@ -56,7 +56,11 @@ void app_run_loop(void* pvParameters) {
     firmwareSwitch->init();
     FileManager::init();
     wifi::init();
-    Network::init(222);
+    Network::init(222,host,port);
+
+
+    //* this code is used to send handshake with server;
+  // Network::send_handshakeToServer();
 
     ESP_LOGI("APP_LOOP", "All systems initialized successfully. Entering main loop.");
 
