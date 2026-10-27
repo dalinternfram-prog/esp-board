@@ -175,7 +175,7 @@ if(pulled_result.size()>0){
         if (ret == ESP_OK) {
             // 3. Get modern C++ std::span pointing to the raw PSRAM data
            auto raw_pcm = s_AudioCaptureDriver->getFrameBuffer();
-            auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm);
+         //   auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm);
 
          // ESP_LOGI("++++++++++++","auto compressed_pcm = s_SimpleLC3Encoder->encode(raw_pcm); success  size = %u",compressed_pcm.size() );
             // Print first sample value to verify real PCM data is being captured
@@ -183,28 +183,13 @@ if(pulled_result.size()>0){
     //     ESP_LOGI("++++++++++++", "Captured %zu samples. First sample: %d", 
     //              audio_span.size(), audio_span[0]);
     // }
-if (!raw_pcm.empty()) {
-    int16_t min_val = 32767;
-    int16_t max_val = -32768;
-    int64_t sum_magnitude = 0;
-
-    for (int16_t sample : raw_pcm) {
-        if (sample < min_val) min_val = sample;
-        if (sample > max_val) max_val = sample;
-        sum_magnitude += std::abs(static_cast<int32_t>(sample));
-    }
-
-    int32_t avg_magnitude = sum_magnitude / raw_pcm.size();
-
-    // ESP_LOGI("CLIENT_AUDIO", "Size: %zu samples | Min: %d | Max: %d | Avg Mag: %d",
-    //          raw_pcm.size(), min_val, max_val, (int)avg_magnitude);
-}
-int16_t max_sample = 0;
-    for (int16_t sample : raw_pcm) {
-        if (std::abs(sample) > max_sample) {
-            max_sample = std::abs(sample);
-        }
-    }
+ 
+// int16_t max_sample = 0;
+//     for (int16_t sample : raw_pcm) {
+//         if (std::abs(sample) > max_sample) {
+//             max_sample = std::abs(sample);
+//         }
+//     }
     //ESP_LOGI("MicTest", "Frame Peak: %d", max_sample);
 
     // if (!audio_span.empty()) {
