@@ -305,19 +305,20 @@
 #include <cstdint>
 #include "ikcp.h"
 #include <vector>
+#include "socket/create-udp-socket.hpp"
 namespace Network {
-    struct UdpConnection {
-    int sock = -1;
-    struct sockaddr_storage addr = {};
-    socklen_t addr_len = 0;
+//     struct UdpConnection {
+//     int sock = -1;
+//     struct sockaddr_storage addr = {};
+//     socklen_t addr_len = 0;
 
-    bool is_valid() const { return sock >= 0; }
-};
+//     bool is_valid() const { return sock >= 0; }
+// };
 
 class KcpClient {
 private:
     ikcpcb* kcp_ = nullptr;
-    UdpConnection conn_;
+   socket::UdpConnection   conn_;
     
     protected:
 
@@ -339,10 +340,12 @@ public:
 
     // Core Tick & Data Flow Methods
     void update(uint32_t current_ms);
+
  std::vector<uint8_t> poll_and_receive();
- 
  //* you can safly free data;
     int send(const uint8_t* data, size_t size);
+    int raw_udp_send(const uint8_t* data, size_t size);
+
 
     // Getters
     int get_socket() const { return conn_.sock; }

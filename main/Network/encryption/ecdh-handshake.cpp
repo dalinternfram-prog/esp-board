@@ -6,9 +6,11 @@
 
 static const char* TAG = "ECDH_SECURE";
 static psa_key_id_t g_local_ecdh_key_id = 0;
+namespace encryption  {
+
 
 /// Step 1: Generate local keypair and return our public key as a vector
-std::optional<std::vector<uint8_t>> encrytion::ecdh_step1_generate_my_key() {
+std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() {
     psa_status_t status;
     psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
 
@@ -42,7 +44,7 @@ std::optional<std::vector<uint8_t>> encrytion::ecdh_step1_generate_my_key() {
 }
 
 /// Step 2: Take server's public vector, compute shared secret, and return it
-std::optional<std::vector<uint8_t>> encrytion::ecdh_step2_compute_shared_secret(const std::vector<uint8_t>& peer_public_key) {
+std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::vector<uint8_t>& peer_public_key) {
     if (g_local_ecdh_key_id == 0) {
         ESP_LOGE(TAG, "No active local ECDH key found!");
         return std::nullopt;
@@ -74,4 +76,7 @@ std::optional<std::vector<uint8_t>> encrytion::ecdh_step2_compute_shared_secret(
     shared_secret.resize(secret_len);
     ESP_LOGI(TAG, "Handshake complete! Shared secret derived successfully.");
     return shared_secret; // Ready to use as your AES-GCM key!
+}
+
+
 }

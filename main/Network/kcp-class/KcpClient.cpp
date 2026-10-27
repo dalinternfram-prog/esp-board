@@ -1,78 +1,82 @@
 
+#include <cstdint>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 #include <esp_log.h>
 #include <cstring>
+#include <vector>
 
 #include "../communicate-data/receive-send-net-data.hpp"
 
 #include "KcpClient.hpp"
 namespace Network {
-
+using namespace socket;
 
 static const char* TAG = "KCP_CLIENT";
 
 // Helper: Set socket to non-blocking mode
-static bool make_socket_non_blocking(int sock) {
-    int flags = fcntl(sock, F_GETFL, 0);
-    if (flags < 0) {
-        ESP_LOGE(TAG, "Failed to get socket flags: %d", errno);
-        return false;
-    }
-    if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) {
-        ESP_LOGE(TAG, "Failed to set socket to non-blocking: %d", errno);
-        return false;
-    }
-    return true;
-}
+// static bool make_socket_non_blocking(int sock) {
+//     int flags = fcntl(sock, F_GETFL, 0);
+//     if (flags < 0) {
+//         ESP_LOGE(TAG, "Failed to get socket flags: %d", errno);
+//         return false;
+//     }
+//     if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) {
+//         ESP_LOGE(TAG, "Failed to set socket to non-blocking: %d", errno);
+//         return false;
+//     }
+//     return true;
+// }
 
 // Helper: Production UDP socket setup with getaddrinfo (IPv4/IPv6 agnostic)
-static std::optional<UdpConnection> setup_production_udp_socket(const char* host, const char* port) {
-    struct addrinfo hints = {};
-    hints.ai_family = AF_UNSPEC;     // Allow IPv4 or IPv6 dynamically
-    hints.ai_socktype = SOCK_DGRAM;  // UDP datagram socket
-    hints.ai_protocol = IPPROTO_UDP;
+// static std::optional<UdpConnection> setup_production_udp_socket(const char* host, const char* port) {
+//     struct addrinfo hints = {};
+//     hints.ai_family = AF_UNSPEC;     // Allow IPv4 or IPv6 dynamically
+//     hints.ai_socktype = SOCK_DGRAM;  // UDP datagram socket
+//     hints.ai_protocol = IPPROTO_UDP;
 
-    struct addrinfo* res = nullptr;
-    int err = getaddrinfo(host, port, &hints, &res);
+//     struct addrinfo* res = nullptr;
+//     int err = getaddrinfo(host, port, &hints, &res);
     
-    if (err != 0 || res == nullptr) {
-        ESP_LOGE(TAG, "Failed to resolve hostname %s: error %d", host, err);
-        return std::nullopt;
-    }
+//     if (err != 0 || res == nullptr) {
+//         ESP_LOGE(TAG, "Failed to resolve hostname %s: error %d", host, err);
+//         return std::nullopt;
+//     }
 
-    int sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock < 0) {
-        ESP_LOGE(TAG, "Failed to create socket for family %d", res->ai_family);
-        freeaddrinfo(res);
-        return std::nullopt;
-    }
+//     int sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+//     if (sock < 0) {
+//         ESP_LOGE(TAG, "Failed to create socket for family %d", res->ai_family);
+//         freeaddrinfo(res);
+//         return std::nullopt;
+//     }
 
-    if (!make_socket_non_blocking(sock)) {
-        close(sock);
-        freeaddrinfo(res);
-        return std::nullopt;
-    }
+//     if (!make_socket_non_blocking(sock)) {
+//         close(sock);
+//         freeaddrinfo(res);
+//         return std::nullopt;
+//     }
 
-    UdpConnection conn;
-    conn.sock = sock;
-    std::memcpy(&conn.addr, res->ai_addr, res->ai_addrlen);
-    conn.addr_len = res->ai_addrlen;
+//     UdpConnection conn;
+//     conn.sock = sock;
+//     std::memcpy(&conn.addr, res->ai_addr, res->ai_addrlen);
+//     conn.addr_len = res->ai_addrlen;
 
-    freeaddrinfo(res);
-    ESP_LOGI(TAG, "UDP socket successfully created and set to non-blocking.");
-    return conn;
-}
+//     freeaddrinfo(res);
+//     ESP_LOGI(TAG, "UDP socket successfully created and set to non-blocking.");
+//     return conn;
+// }
 
 
 // KCP Output Bridge Callback
 static int  kcp_output_callback(const char* buf, int len, ikcpcb* kcp, void* user) {
     auto* conn = static_cast<socket::UdpConnection*>(user);
     if (!conn || !conn->is_valid()) {
+         ESP_LOGE(TAG, "!conn || !conn->is_valid()");
         return -1;
     }
     bool success = communicate::udp_send(*conn, reinterpret_cast<const uint8_t*>(buf), len);
+    if(!success)   ESP_LOGW(TAG, "communicate::udp_send not success");
     return success ? 0 : -1;
 }
 
@@ -112,6 +116,11 @@ std::vector<uint8_t> KcpClient::poll_and_receive() {
     buffer.resize(bytes_read);
     return buffer;
 }
+
+
+
+
+
 bool KcpClient::initialize(const char* host, const char* port) {
     // 1. Establish underlying transport
     auto conn_opt = setup_production_udp_socket(host, port);
@@ -139,6 +148,14 @@ bool KcpClient::initialize(const char* host, const char* port) {
     return true;
 }
 
+    int KcpClient::raw_udp_send(const uint8_t* data, size_t size){
+        if(data){
+                bool success = communicate::udp_send(this->conn_, data, size);
+    if(!success)   ESP_LOGW(TAG, "communicate::udp_send not success");
+    return success ? 0 : -1;
+        }
+        return -1;
+    }
 void KcpClient::close_connection() {
     if (kcp_) {
         ikcp_release(kcp_);
@@ -160,6 +177,17 @@ void KcpClient::update(uint32_t current_ms) {
 
 int KcpClient::send(const uint8_t* data, size_t size) {
     if (!kcp_) return -1;
+        
+    
+//  ESP_LOGW(TAG, "=============================== >before Send through kcp size = %zu",size);
+//  std::string client_hex = "";
+// for (size_t i = 0; i < size; ++i) {
+//     char buf[3];
+//     snprintf(buf, sizeof(buf), "%02x", data[i]);
+//     client_hex += buf;
+// }
+// ESP_LOGI(TAG, "Client Raw Packet (Hex): %s", client_hex.c_str());
+
     return ikcp_send(kcp_, reinterpret_cast<const char*>(data), size);
 }
 

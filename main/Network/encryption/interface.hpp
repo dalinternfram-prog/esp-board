@@ -21,7 +21,7 @@
 #include "esp_log.h"
 
 
-namespace encrytion {
+namespace encryption {
 static const char *TAG = "AES_GCM";
 
 constexpr size_t AES_KEY_BYTES = 32;   // 256-bit AES Key
@@ -62,7 +62,7 @@ bool aes_gcm_encrypt(const uint8_t key[AES_KEY_BYTES],
 
 
 
-std::optional<std::vector<uint8_t>> aes_gcm_encrypt( const std::vector<uint8_t>& plaintext);
+std::optional<std::vector<uint8_t>> aes_gcm_encrypt( const std::vector<uint8_t>& plaintext,std::vector<uint8_t>aes_key);
 
 
 

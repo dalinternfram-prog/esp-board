@@ -15,7 +15,7 @@ namespace Network {
     inline const char* TAG = "KCP_CLIENT";
   inline  bool completeHandshake =false;
     // Initialization & Lifecycle
-    void init(uint32_t conv_id,const char* host, const char* port);
+    void init( const char* host, const char* port);
     void close_connection();
 inline std::vector<uint8_t>aes_key;
 

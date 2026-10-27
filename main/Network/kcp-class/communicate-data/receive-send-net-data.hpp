@@ -61,6 +61,7 @@
 // }
 #pragma once
 
+#include <string>
 #include <sys/socket.h>
 #include <esp_log.h>
 #include <errno.h>
@@ -97,7 +98,15 @@ bool udp_send(const socket::UdpConnection& conn, const uint8_t* data, size_t len
         ESP_LOGE(TAG, "sendto failed errno: %d", errno);
         return false;
     }
-
+    
+//  ESP_LOGW(TAG, "=============================== >Send through UDP size = %zu",sent);
+//  std::string client_hex = "";
+// for (size_t i = 0; i < sent; ++i) {
+//     char buf[3];
+//     snprintf(buf, sizeof(buf), "%02x", data[i]);
+//     client_hex += buf;
+// }
+// ESP_LOGI(TAG, "Client Raw Packet (Hex): %s", client_hex.c_str());
     // Ensure entire packet was accepted by system socket buffer
     return (size_t)sent == len;
 }

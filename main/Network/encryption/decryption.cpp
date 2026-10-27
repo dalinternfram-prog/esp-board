@@ -3,7 +3,7 @@
 
 static const char *TAG = "PSA_AES_GCM";
 
-namespace encrytion {
+namespace encryption {
 
 
  bool aes_gcm_decrypt(const uint8_t key[AES_KEY_BYTES],                     // Function signature taking key, packet, packet length, and output pointers

@@ -460,9 +460,10 @@ bool writeFile(const std::string& filename, const std::string& data, long offset
     // Open in read/write mode ("r+"), create if it doesn't exist ("w+")
     FILE* f = fopen(path.c_str(), "r+");
     if (f == NULL) {
+          ESP_LOGW(TAG, "Failed to open file for r+: %s,(errno: %d),try to use w+", path.c_str(),errno);
         f = fopen(path.c_str(), "w+");
         if (f == NULL) {
-            ESP_LOGE(TAG, "Failed to open file for writing: %s", path.c_str());
+            ESP_LOGE(TAG, "Failed to open file for writing: %s,(errno: %d)", path.c_str(),errno);
             return false;
         }
     }
@@ -534,7 +535,7 @@ std::vector<uint8_t> readFileBytes(const std::string& filename, long offset, lon
     std::string path = getFullPath(filename); // Convert to complete mount path
     FILE* f = fopen(path.c_str(), "rb");        // Open file stream for binary reading ("rb")
     if (f == NULL) {
-        ESP_LOGW(TAG, "Failed to open file for reading: %s", path.c_str());
+        ESP_LOGW(TAG, "Failed to open file for reading: %s,(errno: %d)", path.c_str(), errno);
         return {}; // Return empty vector if target file cannot be opened
     }
 

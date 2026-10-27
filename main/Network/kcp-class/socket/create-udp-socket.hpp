@@ -22,7 +22,7 @@ struct UdpConnection {
 /**
  * @brief Sets a socket file descriptor to non-blocking mode.
  */
-bool make_socket_non_blocking(int sock) {
+inline bool make_socket_non_blocking(int sock) {
     int flags = fcntl(sock, F_GETFL, 0);
     if (flags < 0) {
         ESP_LOGE("UDP", "Failed to get socket flags: %d", errno);
@@ -41,7 +41,7 @@ bool make_socket_non_blocking(int sock) {
 /**
  * @brief Resolves a domain/IP (IPv4/IPv6), creates a UDP socket, and configures it.
  */
-std::optional<UdpConnection> setup_production_udp_socket(const char* host, const char* port) {
+inline std::optional<UdpConnection> setup_production_udp_socket(const char* host, const char* port) {
     struct addrinfo hints = {};
     hints.ai_family = AF_UNSPEC;     // Allow IPv4 or IPv6 dynamically
     hints.ai_socktype = SOCK_DGRAM;  // UDP datagram socket

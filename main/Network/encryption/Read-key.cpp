@@ -10,7 +10,7 @@
 
 static const char *TAG = "PSA_AES_GCM";
 
-namespace encrytion {
+namespace encryption {
 
  
 

@@ -481,7 +481,7 @@ esp_err_t esp_board_init(uint32_t sample_rate, int channel_format, int bits_per_
         bits_per_chan = 32;
     }
     s_bits_per_chan = bits_per_chan;
-
+//!emily change here;from 32 to bits_per_chan
     bsp_i2s_init(I2S_NUM_1, 16000, 2, 32);
     // Because record and play use the same i2s.
     bsp_codec_init(16000, 16000, 2, 32);

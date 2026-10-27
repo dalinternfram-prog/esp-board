@@ -11,8 +11,7 @@ namespace Network {
     static std::unique_ptr<KcpClient> u_KcpClient;
     static std::string fileName = "packageStoredFile";
     static std::unique_ptr<file::fileVector> packageStoredFile = std::make_unique<file::fileVector>(fileName);
-
-
+    static uint32_t conv_id; 
 
 
 //TODO:this is error now,since we store un-encrypted data here;
@@ -24,7 +23,7 @@ namespace Network {
             for(int i=0;i<currentSize;++i){
               auto unsend_ = packageStoredFile->Pop();
  
-                    auto Opt_encrypted_data = encrytion::aes_gcm_encrypt(unsend_);
+                    auto Opt_encrypted_data = encryption::aes_gcm_encrypt(unsend_,aes_key);
         if (!Opt_encrypted_data.has_value()) return  ;
 
         auto encrypted_data = Opt_encrypted_data.value();
@@ -40,12 +39,16 @@ namespace Network {
  
     }
     // Initialization (replaces the constructor)
-    void init(uint32_t conv_id,const char* host, const char* port) {
+    void init( const char* host, const char* port) {
+         conv_id = 0;
+ 
+        conv_id = esp_random();
+ 
         // Initialize your KcpClient here, e.g.:
          u_KcpClient = std::make_unique<KcpClient>(conv_id);
         u_KcpClient->initialize(host,port);
    
-   try_send_disk_package();
+   //try_send_disk_package();
 
     }
 
@@ -61,7 +64,7 @@ namespace Network {
             u_KcpClient->update(current_ms);
         }
  
-   try_send_disk_package();
+  // try_send_disk_package();
 
 
     }
@@ -71,40 +74,68 @@ namespace Network {
         
         
         auto encrypted_data = u_KcpClient->poll_and_receive();
+          if(encrypted_data.size()==0)return {};
+
 
         if(!completeHandshake){
             //* this is the server public key;
             //* we extract it ;
-          std::optional<std::vector<uint8_t>> result =   encrytion::ecdh_step2_compute_shared_secret(encrypted_data);
+          std::optional<std::vector<uint8_t>> result =   encryption::ecdh_step2_compute_shared_secret(encrypted_data);
           if(result.has_value()){
-            // load nvs;
+             
             aes_key = result.value();
             completeHandshake=true;
+
+            // --- ADD THIS CODE TO PRINT THE KEY AS HEX ---
+            std::string hex_str = "";
+            for (uint8_t b : aes_key) {
+                char buf[3];
+                snprintf(buf, sizeof(buf), "%02x", b);
+                hex_str += buf;
+            }
+            ESP_LOGE(TAG, "Client Shared Secret (Hex): %s", hex_str.c_str());
+
+
+            // ---------------------------------------------
             return {};
           }
         }
-        auto Opt_decrypted_data = encrytion::aes_gcm_decrypt(encrypted_data);
+        auto Opt_decrypted_data = encryption::aes_gcm_decrypt(encrypted_data);
 
         if (!Opt_decrypted_data.has_value()) return {};
         return Opt_decrypted_data.value();
     }
+
+
+    
+
+
+
+
+
+
 // TODO: when it's first send,we don't encrypt;
     int send(const std::vector<uint8_t>& data) {
 
-
-
-// TODO : wifi connected,but handshake haven't it;or wifi is disconnected;
-if(!wifi::isConnected()||!completeHandshake){
-           ESP_LOGI(TAG, "wifi disconnected,or handshake has not finished yet");
+if(!wifi::isConnected()){
+     ESP_LOGI(TAG, "wifi disconnected ");
             // store in disk;
-            packageStoredFile->push_back(data);
+         //   packageStoredFile->push_back(data);
+            return -1;
+}
+ 
+if( !completeHandshake){
+           ESP_LOGI(TAG, "  handshake has not finished yet");
+            // store in disk;
+          //  packageStoredFile->push_back(data);
             return -1;
 }
  
   
-   try_send_disk_package();
+  // try_send_disk_package();
 
-        auto Opt_encrypted_data = encrytion::aes_gcm_encrypt(data);
+           ESP_LOGW(TAG, " pay load size = %u bytes",data.size());
+        auto Opt_encrypted_data = encryption::aes_gcm_encrypt(data,aes_key);
         if (!Opt_encrypted_data.has_value()) return -1;
 
         auto encrypted_data = Opt_encrypted_data.value();
@@ -116,33 +147,42 @@ if(!wifi::isConnected()||!completeHandshake){
         }
         return r;
 
-
  
-      
 
 
     }
  bool send_handshakeToServer(){
-if(completeHandshake){
-    
-ESP_LOGE(TAG, "duplicated handshake with server");
-    return false;
-}
-
-std::optional<std::vector<uint8_t>> generated_key =encrytion::ecdh_step1_generate_my_key();
-
-if(!generated_key.has_value()){
-ESP_LOGE(TAG, "!generated_key.has_value()");
-    return false;
-}
-
-        int r = u_KcpClient->send(generated_key.value().data(), generated_key.value().size());
-        if (r == -1) {
-            ESP_LOGI(TAG, "send failed, reason: unknown");
+if (completeHandshake) {
+            ESP_LOGE(TAG, "duplicated handshake with server");
             return false;
         }
-   return true;
- 
-    
- }
+
+        std::optional<std::vector<uint8_t>> generated_key = encryption::ecdh_step1_generate_my_key();
+        if (!generated_key.has_value()) {
+            ESP_LOGE(TAG, "!generated_key.has_value()");
+            return false;
+        }
+
+        const auto& pub_key_bytes = generated_key.value();
+        std::vector<uint8_t> handshake_packet;
+        handshake_packet.resize(sizeof(uint32_t) + pub_key_bytes.size());
+
+        // Copy conv_id into the first 4 bytes
+        std::memcpy(handshake_packet.data(), &conv_id, sizeof(uint32_t));
+
+        // Copy public key bytes right after it
+        std::memcpy(handshake_packet.data() + sizeof(uint32_t), pub_key_bytes.data(), pub_key_bytes.size());
+
+        ESP_LOGW(TAG, "ready to send to server the handshake (conv_id: %u)", conv_id);
+
+        // FIX 2: Send the full handshake_packet instead of just the raw key
+        int r = u_KcpClient->raw_udp_send(handshake_packet.data(), handshake_packet.size());
+        if (r == -1) {
+            ESP_LOGE(TAG, "send failed, reason: unknown");
+            return false;
+        }
+        return true;
+    }
+
+
 } // namespace Network

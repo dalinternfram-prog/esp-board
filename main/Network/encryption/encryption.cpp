@@ -3,7 +3,7 @@
 
 static const char *TAG = "PSA_AES_GCM";
 
-namespace encrytion {
+namespace encryption {
 
  
 
@@ -69,20 +69,14 @@ namespace encrytion {
 
 // Wrapper function that calls the original implementation using std::vector
 std::optional<std::vector<uint8_t>> aes_gcm_encrypt(
-    const std::vector<uint8_t>& plaintext)
+    const std::vector<uint8_t>& plaintext,std::vector<uint8_t>aes_key)
 {
 
-// load key;
-    auto __Key = load_aes_key_from_nvs();
-    if(!__Key.has_value())   return std::nullopt;
-
-   auto key = __Key.value();
-
-
+  
 
     // Validate that the key matches the expected byte length
-    if (key.size() != AES_KEY_BYTES) {
-        ESP_LOGE(TAG, "Invalid key size: expected %d, got %u", AES_KEY_BYTES, key.size());
+    if (aes_key.size() != AES_KEY_BYTES) {
+        ESP_LOGE(TAG, "Invalid key size: expected %d, got %u", AES_KEY_BYTES, aes_key.size());
         return std::nullopt;
     }
 
@@ -92,7 +86,7 @@ std::optional<std::vector<uint8_t>> aes_gcm_encrypt(
 
     // Call your original function
     bool success = aes_gcm_encrypt(
-        key.data(),                    // Raw key pointer
+        aes_key.data(),                    // Raw key pointer
         plaintext.data(),              // Raw plaintext pointer
         plaintext.size(),              // Plaintext length
         out_buffer.data(),             // Output buffer pointer

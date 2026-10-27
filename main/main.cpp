@@ -241,8 +241,8 @@ extern "C" void app_main()
             ESP_LOGI("++++++++++++","success Speech_register_callback" );
     Audio_Play_Init();
 
-            ESP_LOGI("++++++++++++","success Audio_Play_Init" );
-     RGB_Example();
+    //         ESP_LOGI("++++++++++++","success Audio_Play_Init" );
+    //  RGB_Example();
 
             ESP_LOGI("++++++++++++","success RGB_Example" );
      key_module_init(NULL);
