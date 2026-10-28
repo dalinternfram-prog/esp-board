@@ -30,7 +30,35 @@
 // idf.py fullclean
 // idf.py erase-flash flash
 
+/*
+TODO 10/27 18:25,error log:
 
+E (11274) task_wdt: Task watchdog got triggered. The following tasks/users did not reset the watchdog in time:
+E (11274) task_wdt:  - IDLE1 (CPU 1)
+E (11274) task_wdt: Tasks currently running:
+E (11274) task_wdt: CPU 0: IDLE0
+E (11274) task_wdt: CPU 1: app_run_loop_ta
+E (11274) task_wdt: Print CPU 1 backtrace
+
+
+Backtrace: 0x40378E52:0x3FCA1BC0 0x40378725:0x3FCA1BE0 0x4218E091:0x3FCC33D0 0x420B074E:0x3FCC3540 0x420AEFC0:0x3FCC38C0 0x4207F7B7:0x3FCC6330 0x4205B70D:0x3FCC6680 0x4205C4E5:0x3FCC6DC0 0x42058367:0x3FCC6E00 0x4204361D:0x3FCC6E40 0x42014BC3:0x3FCC6E60 0x42014C30:0x3FCC6EB0 0x42010F5D:0x3FCC6EE0 0x40384C21:0x3FCC6FE0
+--- 0x40378e52: esp_crosscore_isr at /home/emily/.espressif/v6.1/esp-idf/components/esp_system/crosscore_int.c:74
+--- 0x40378725: _xt_lowint1 at /home/emily/.espressif/v6.1/esp-idf/components/xtensa/xtensa_vectors.S:1264
+--- 0x4218e091: silk_warped_autocorrelation_FIX_c at ??:?
+--- 0x420b074e: silk_noise_shape_analysis_FIX at ??:?
+--- 0x420aefc0: silk_encode_frame_FIX at ??:?
+--- 0x4207f7b7: silk_Encode at ??:?
+--- 0x4205b70d: opus_encode_native at ??:?
+--- 0x4205c4e5: opus_encode at ??:?
+--- 0x42058367: esp_opus_enc_process at ??:?
+--- 0x4204361d: esp_audio_enc_process at ??:?
+--- 0x42014bc3: SimpleOpusEncoder::encode(std::vector<short, std::allocator<short> > const&, unsigned char*, unsigned long) at /home/emily/hardware-proj/ESP32-S3-AUDIO-Board-Demo/ESP-IDF/factory_01/main/macroPhone/Opus/Opus.cpp:793
+--- 0x42014c30: SimpleOpusEncoder::encode(std::vector<short, std::allocator<short> > const&, unsigned long) at /home/emily/hardware-proj/ESP32-S3-AUDIO-Board-Demo/ESP-IDF/factory_01/main/macroPhone/Opus/Opus.cpp:817
+--- 0x42010f5d: app_run_loop(void*) at /home/emily/hardware-proj/ESP32-S3-AUDIO-Board-Demo/ESP-IDF/factory_01/main/Main/prog.cpp:178
+--- 0x40384c21: vPortTaskWrapper at /home/emily/.espressif/v6.1/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c:147
+
+
+*/
 
 
 //  */
@@ -175,27 +203,9 @@ if(pulled_result.size()>0){
         if (ret == ESP_OK) {
             // 3. Get modern C++ std::span pointing to the raw PSRAM data
            auto raw_pcm = s_AudioCaptureDriver->getFrameBuffer();
-         //   auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm);
+        //  auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm);
 
-         // ESP_LOGI("++++++++++++","auto compressed_pcm = s_SimpleLC3Encoder->encode(raw_pcm); success  size = %u",compressed_pcm.size() );
-            // Print first sample value to verify real PCM data is being captured
-    // if (!audio_span.empty()) {
-    //     ESP_LOGI("++++++++++++", "Captured %zu samples. First sample: %d", 
-    //              audio_span.size(), audio_span[0]);
-    // }
- 
-// int16_t max_sample = 0;
-//     for (int16_t sample : raw_pcm) {
-//         if (std::abs(sample) > max_sample) {
-//             max_sample = std::abs(sample);
-//         }
-//     }
-    //ESP_LOGI("MicTest", "Frame Peak: %d", max_sample);
-
-    // if (!audio_span.empty()) {
-    //     // Print sample value to observe peak changes
-    //     ESP_LOGI("MicTest", "Sample[0]: %d", audio_span[0]);
-    // }
+  
 // Size in elements (returns 1024)
     std::size_t element_count = raw_pcm.size(); 
 
@@ -204,9 +214,29 @@ if(pulled_result.size()>0){
  
 // Correctly copy the entire byte representation (elements * sizeof(int16_t))
 const uint8_t* byte_ptr = reinterpret_cast<const uint8_t*>(raw_pcm.data());
-std::vector<unsigned char> raw_pcm_(byte_ptr, byte_ptr + byte_count);
+
+    // Split into two UDP payloads
+    const std::size_t packet_size = byte_count / 2;
+
+
+        std::vector<unsigned char> packet1(
+        byte_ptr,
+        byte_ptr + packet_size
+    );
+
+    std::vector<unsigned char> packet2(
+        byte_ptr + packet_size,
+        byte_ptr + byte_count
+    );
+
+        // Send both packets
+    bool success1 = Network::send(packet1) != -1;
+    bool success2 = Network::send(packet2) != -1;
+
+
+//std::vector<unsigned char> raw_pcm_(byte_ptr, byte_ptr + byte_count);
 //TODO: the result,we need to send to server;
-bool success = Network::send(raw_pcm_)!=-1;
+//bool success = Network::send(raw_pcm_)!=-1;
 
 
 

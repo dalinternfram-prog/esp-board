@@ -92,6 +92,8 @@ std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
 
     const std::size_t total_samples = chunk_size_ * channel_count_;
 
+      int factor = 1;
+if (macroPhone::argument::bits_per_chan ==32)factor=2;
 
     // Print the first 6 raw samples coming straight out of the I2S DMA buffer
     // ESP_LOGI("ESP32_CAPTURE", "RAW STREAM -> [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d",
@@ -102,7 +104,7 @@ std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
 
 
     // Allocate and copy data from raw_dma_buffer_ into a new std::vector
-    return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples);
+    return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples*factor);
 }
 
 } // namespace Hardware
