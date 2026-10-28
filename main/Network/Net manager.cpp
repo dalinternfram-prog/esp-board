@@ -117,6 +117,7 @@ namespace Network {
 // TODO: when it's first send,we don't encrypt;
     int send(const std::vector<uint8_t>& data) {
 
+        //TODO test;
 if(!wifi::isConnected()){
      ESP_LOGI(TAG, "wifi disconnected ");
             // store in disk;
@@ -124,8 +125,9 @@ if(!wifi::isConnected()){
             return -1;
 }
  
+//Todo test;
 if( !completeHandshake){
-           ESP_LOGI(TAG, "  handshake has not finished yet");
+           //ESP_LOGI(TAG, "  handshake has not finished yet");
             // store in disk;
           //  packageStoredFile->push_back(data);
             return -1;
@@ -134,20 +136,22 @@ if( !completeHandshake){
   
   // try_send_disk_package();
 
-           ESP_LOGW(TAG, " pay load size = %u bytes",data.size());
+         //  ESP_LOGW(TAG, " pay load size = %u bytes",data.size());
         auto Opt_encrypted_data = encryption::aes_gcm_encrypt(data,aes_key);
         if (!Opt_encrypted_data.has_value()) return -1;
 
         auto encrypted_data = Opt_encrypted_data.value();
 
                    // we encrypt here;
+
+                   //TODO: test;
         int r = u_KcpClient->send(encrypted_data.data(), encrypted_data.size());
         if (r == -1) {
             ESP_LOGI(TAG, "send failed, reason: unknown");
         }
         return r;
 
- 
+ return 1;
 
 
     }

@@ -24,6 +24,7 @@
 #include "Net manager.hpp" 
 #include <stdio.h>
 #include <sys/statvfs.h>
+#include "Opus_class.hpp"
 //**
 // 
 // idf.py monitor
@@ -98,7 +99,7 @@ void kcp_update_task(void *pvParameters) {
         // Get current time in milliseconds
         uint32_t current_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     
-        Network::update(current_ms);
+   //     Network::update(current_ms);
         // Run every 10 milliseconds
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -146,14 +147,14 @@ check_filesystem_space();
     Network::init(host,port);
 
 // Example of how to launch the task:
-xTaskCreate(
-    kcp_update_task,      // Task function
-    "kcp_update_task",    // Task name (for debugging)
-    4096,                 // Stack size in bytes (4KB is usually plenty)
-    NULL,                 // Parameters to pass (e.g., your KCP pointer if needed)
-    5,                    // Task priority (keep it moderate, e.g., 5)
-    NULL                  // Task handle (optional)
-);
+// xTaskCreate(
+//     kcp_update_task,      // Task function
+//     "kcp_update_task",    // Task name (for debugging)
+//     4096,                 // Stack size in bytes (4KB is usually plenty)
+//     NULL,                 // Parameters to pass (e.g., your KCP pointer if needed)
+//     5,                    // Task priority (keep it moderate, e.g., 5)
+//     NULL                  // Task handle (optional)
+// );
 xTaskCreate(
     send_handshake_task,      // Task function
     "send_handshake_task",    // Task name (for debugging)
@@ -184,8 +185,29 @@ if(ret!=ESP_OK) ESP_LOGE(TAG, "s_SimpleOpusEncoder->init(); error");
 
  
 
+
+std::shared_ptr<Opus> s_Opus = std::make_shared<Opus>();
+s_Opus->init(macroPhone::argument::sample_rate,macroPhone::argument::channel_count,macroPhone::argument::bits_per_chan,macroPhone::argument::target_frame_duration_ms);
+
+
+
+
+
+
+uint32_t frameCount = 0;
+
     while (true) {
 
+  
+                uint32_t current_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    
+        Network::update(current_ms);
+
+// ESP_LOGI("MEM", "Free heap: %u bytes",
+//          (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT));
+
+// ESP_LOGI("MEM", "Largest block: %u bytes",
+//          (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 
 //TODO:we need to pull server information;
 
@@ -196,14 +218,48 @@ if(pulled_result.size()>0){
     ESP_LOGI("Server", "Get server information");
 }
 
-
+//ESP_LOGI("HEAP", "Checking before readSamples");
+// if (!heap_caps_check_integrity_all(true)) {
+//     ESP_LOGE("HEAP", "Heap already corrupted before readSamples");
+// }
 
         // 2. Read new PCM frame from hardware
          ret = s_AudioCaptureDriver->readSamples();
         if (ret == ESP_OK) {
+
+//   ESP_LOGI("+++", "  detected near frame %lu",
+//                      (unsigned long)frameCount);
+//ESP_LOGI("HEAP", "Checking before getFrameBuffer");
+// if (!heap_caps_check_integrity_all(true)) {
+//     ESP_LOGE("HEAP", "Heap already corrupted before getFrameBuffer");
+// }
+
+
             // 3. Get modern C++ std::span pointing to the raw PSRAM data
            auto raw_pcm = s_AudioCaptureDriver->getFrameBuffer();
-        //  auto compressed_pcm = s_SimpleOpusEncoder->encode(raw_pcm);
+ 
+
+    if (++frameCount % 100 == 0) {
+        if (!heap_caps_check_integrity_all(true)) {
+            ESP_LOGE("HEAP", "Heap corruption detected near frame %lu",
+                     (unsigned long)frameCount);
+            abort();  // Stop here so the failure can be investigated
+        }
+    }
+
+//ESP_LOGI("HEAP", "Checking before encode");
+
+
+
+          auto compressed_pcm = s_Opus->encode(raw_pcm.data());
+
+
+// if (!heap_caps_check_integrity_all(true)) {
+//     ESP_LOGE("HEAP", "Heap already corrupted after encode");
+// }
+
+
+ 
 
   
 // Size in elements (returns 1024)
@@ -240,7 +296,7 @@ const uint8_t* byte_ptr = reinterpret_cast<const uint8_t*>(raw_pcm.data());
 
 
 
-  ESP_LOGI("BufferCheck", "Elements: %zu | Total Bytes: %zu", element_count, byte_count);
+ // ESP_LOGI("BufferCheck", "Elements: %zu | Total Bytes: %zu", element_count, byte_count);
         } 
         
         
@@ -248,7 +304,7 @@ const uint8_t* byte_ptr = reinterpret_cast<const uint8_t*>(raw_pcm.data());
             ESP_LOGW("++++++++++++", "Failed to read audio samples, retrying...");
         }
 
-      //vTaskDelay(pdMS_TO_TICKS(5)); // Yield to keep Task Watchdog happy
+      vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
     }
 
 

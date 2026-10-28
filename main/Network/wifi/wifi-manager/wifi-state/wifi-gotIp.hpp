@@ -47,7 +47,7 @@ inline void on_wifi_got_ip(const char *event, const void *data, size_t len, void
         // Check if the file recorder instance is valid before attempting to save
         if (wifiConditionRecorderFile) {
             // Package the full status into our struct wrapper and save it persistently
-            wifiConditionRecorderFile->save(status);
+          //  wifiConditionRecorderFile->save(status);
         }
     } else {
         ESP_LOGW(TAG, "Failed to retrieve full WiFi status during got_ip event");

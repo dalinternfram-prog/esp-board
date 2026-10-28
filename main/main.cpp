@@ -25,7 +25,8 @@ static char SD_Name[MAX_MP3_FILE][100];
 static uint16_t Search_mp3_file_count = 0;
 static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
-static int magicStackNumber = 32768;
+//TODO change 32768 To 49152
+static int magicStackNumber = 49152;
  
 void app_run_loop(void* pvParameters);
 // 按键回调函数
@@ -1666,4 +1667,118 @@ extern "C" void app_main(void) {
     xTaskCreate(json_file_store_test_task, "json_file_store_test_task", 8192, NULL, 5, NULL);
 }
 
+#endif
+
+
+
+
+
+
+
+#if defined (TestNewOpusClassSuccess)
+
+
+#include <cstdint>
+#include <cmath>
+#include <vector>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+
+#include "Opus_class.hpp"
+
+static const char* TAG = "OPUS_TEST";
+
+static constexpr int SAMPLE_RATE = 16000;
+static constexpr int CHANNELS = 2;
+static constexpr int FRAME_MS = 20;
+static constexpr int FRAME_SIZE =
+    SAMPLE_RATE * FRAME_MS / 1000;
+static constexpr int SAMPLE_COUNT =
+    FRAME_SIZE * CHANNELS;
+
+static void opus_test_task(void* arg)
+{
+    // Configure these arguments to match your Opus::init() signature.
+    Opus opus;
+    opus.init(SAMPLE_RATE, CHANNELS, 32, FRAME_MS);
+
+    // Signed 32-bit PCM: 640 interleaved samples per frame.
+    std::vector<int32_t> pcm(SAMPLE_COUNT);
+
+    uint32_t frameNumber = 0;
+    double phase = 0.0;
+    constexpr double PI = 3.14159265358979323846;
+    constexpr double FREQUENCY = 440.0;
+
+    while (true) {
+        // Generate a 440 Hz sine wave on both channels.
+        for (int i = 0; i < FRAME_SIZE; ++i) {
+            const double sample =
+                0.25 * sin(phase);
+
+            // Scale normalized audio to signed 32-bit PCM.
+            const int32_t value =
+                static_cast<int32_t>(
+                    sample * 2147483647.0
+                );
+
+            pcm[2 * i]     = value;  // Left
+            pcm[2 * i + 1] = value;  // Right
+
+            phase += 2.0 * PI * FREQUENCY / SAMPLE_RATE;
+            if (phase >= 2.0 * PI) {
+                phase -= 2.0 * PI;
+            }
+        }
+
+ESP_LOGW(TAG, "After encode: minimum free stack = %u bytes",
+         static_cast<unsigned>(
+             uxTaskGetStackHighWaterMark(nullptr)));
+
+        // Encode using your existing Opus class.
+        const std::vector<unsigned char> packet =
+            opus.encode(pcm.data());
+
+
+ESP_LOGW(TAG, "After encode: minimum free stack = %u bytes",
+         static_cast<unsigned>(
+             uxTaskGetStackHighWaterMark(nullptr)));
+
+
+
+        if (packet.empty()) {
+            ESP_LOGE(TAG, "Encoding failed at frame %lu",
+                     static_cast<unsigned long>(frameNumber));
+            // Continue to see whether the failure repeats.
+        }
+
+        ++frameNumber;
+
+        if ((frameNumber % 100) == 0) {
+            ESP_LOGI(TAG, "Encoded %lu frames",
+                     static_cast<unsigned long>(frameNumber));
+        }
+
+        // Simulate a 20 ms audio frame interval.
+        vTaskDelay(pdMS_TO_TICKS(FRAME_MS));
+    }
+}
+
+ 
+
+extern "C" void app_main(void) {
+BaseType_t result = xTaskCreate(
+    opus_test_task,
+    "opus_test",
+    49152,
+    nullptr,
+    5,
+    nullptr
+);
+
+ESP_LOGI(TAG, "Task creation result: %ld",
+         static_cast<long>(result));
+}
 #endif

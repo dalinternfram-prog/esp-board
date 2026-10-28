@@ -82,6 +82,15 @@ esp_err_t AudioCaptureDriver::readSamples() {
         return ESP_FAIL;
     }
 
+    
+if (bytes_read != buffer_bytes) {
+    ESP_LOGW(TAG, "Short I2S read: %u / %u bytes",
+             (unsigned)bytes_read,
+             (unsigned)buffer_bytes);
+    return ESP_FAIL;
+}
+
+
     return ESP_OK;
 }
 
