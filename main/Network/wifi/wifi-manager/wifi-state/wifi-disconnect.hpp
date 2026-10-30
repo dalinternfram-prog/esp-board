@@ -12,7 +12,7 @@
 #include <chrono>
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "protocol/client/wifi_disconnected_protocol.hpp"
+#include "protocol/client/wifi/wifi_disconnected_protocol.hpp"
 #include "wifi/shared.hpp"
 
 #include "Net manager.hpp"

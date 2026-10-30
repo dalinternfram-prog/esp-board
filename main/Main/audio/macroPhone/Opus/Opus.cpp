@@ -1,5 +1,5 @@
 
-#include "Opus_class.hpp" // Includes the class declaration.
+#include "Opus.hpp" // Includes the class declaration.
 #include "esp_heap_caps.h"
 #include <esp_log.h> // Provides ESP-IDF logging macros.
 
