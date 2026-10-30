@@ -150,10 +150,6 @@ if( !completeHandshake){
             ESP_LOGI(TAG, "send failed, reason: unknown");
         }
         return r;
-
- return 1;
-
-
     }
  bool send_handshakeToServer(){
 if (completeHandshake) {

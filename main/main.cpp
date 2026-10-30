@@ -1,4 +1,4 @@
-  #define MainRun
+  #define TestFIFO
   
   #if defined (MainRun)
 #include "Opus.hpp"
@@ -1782,3 +1782,686 @@ ESP_LOGI(TAG, "Task creation result: %ld",
          static_cast<long>(result));
 }
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if defined(TestSingleFile) // Entire test suite compiles only when this macro is defined
+
+
+
+#include "Database/fileManager1/file_manager.hpp" // Level 1 filesystem APIs
+#include "single_file.hpp" // Level 2 SingleFile class
+#include "esp_log.h"        // ESP-IDF logging library
+#include <string>           // std::string
+#include <vector>           // std::vector
+#include <algorithm>        // std::min, std::max
+
+// Define the macro to enable test execution
+#define TestSingleFile 1
+
+
+
+namespace { // Anonymous namespace to keep test utilities local to this file
+
+static const char* TAG = "TestSingleFile"; // Log filter tag
+static const char* TEST_FILE = "test_run.bin"; // Dedicated test file name
+
+// Global test counters
+static int s_tests_run = 0;    // Tracks total assertions executed
+static int s_tests_passed = 0; // Tracks successful assertions
+static int s_tests_failed = 0; // Tracks failed assertions
+
+// Assertion macro reporting PASS/FAIL along with the line number and expression
+#define TEST_CHECK(condition, desc) do { \
+    s_tests_run++; \
+    if (condition) { \
+        s_tests_passed++; \
+        ESP_LOGI(TAG, "  [PASS] %s", desc); \
+    } else { \
+        s_tests_failed++; \
+        ESP_LOGE(TAG, "  [FAIL] %s (Line %d: %s)", desc, __LINE__, #condition); \
+    } \
+} while (0)
+
+// Helper to remove any leftover test file from prior runs
+void cleanupTestFile() {
+    if (FileManager::exists(TEST_FILE)) {
+        FileManager::deleteFile(TEST_FILE);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Test 1: Basic Write, Read, and File Size
+// ----------------------------------------------------------------------------
+void test_basic_write_read() {
+    ESP_LOGI(TAG, "--- Test: Basic Write, Read, and File Size ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+        std::string payload = "Hello, ESP32 SPIFFS!";
+
+        // 1. Write payload starting at offset 0
+        TEST_CHECK(file.writeFile(payload, 0), "Write initial payload at offset 0");
+
+        // 2. Validate fileSize matches written byte count
+        TEST_CHECK(file.fileSize() == payload.size(), "fileSize() matches written string length");
+
+        // 3. Read back exact bytes
+        std::vector<uint8_t> readBytes = file.readFileBytes(0, payload.size());
+        std::string result(readBytes.begin(), readBytes.end());
+        TEST_CHECK(result == payload, "readFileBytes() matches exact data written");
+    }
+
+    cleanupTestFile();
+}
+
+// ----------------------------------------------------------------------------
+// Test 2: Multiple Consecutive Writes & Append Mode (Handle Reuse)
+// ----------------------------------------------------------------------------
+void test_consecutive_appends() {
+    ESP_LOGI(TAG, "--- Test: Consecutive Appends (Handle Reuse) ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+
+        // Multiple consecutive writes using the already open file handle
+        TEST_CHECK(file.writeFile("Line1\n", -1), "Append Line 1 (offset = -1)");
+        TEST_CHECK(file.writeFile("Line2\n", -1), "Append Line 2 (offset = -1)");
+        TEST_CHECK(file.writeFile("Line3\n", -1), "Append Line 3 (offset = -1)");
+
+        // 6 bytes * 3 = 18 bytes
+        TEST_CHECK(file.fileSize() == 18, "Combined file size is 18 bytes");
+
+        // Read entire content to EOF (size = -1)
+        std::vector<uint8_t> all = file.readFileBytes(0, -1);
+        std::string fullText(all.begin(), all.end());
+        TEST_CHECK(fullText == "Line1\nLine2\nLine3\n", "Read entire file to EOF matches appends");
+    }
+
+    cleanupTestFile();
+}
+
+// ----------------------------------------------------------------------------
+// Test 3: Zero-Padding when Seeking Past EOF
+// ----------------------------------------------------------------------------
+void test_zero_padding() {
+    ESP_LOGI(TAG, "--- Test: Zero-Padding when Seeking Past EOF ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+        file.writeFile("HEAD", 0); // 4 bytes
+
+        // Write "TAIL" at offset 8 (bytes 4..7 must be auto-filled with 0x00)
+        TEST_CHECK(file.writeFile("TAIL", 8), "Write 'TAIL' at offset 8 (gap = 4 bytes)");
+        TEST_CHECK(file.fileSize() == 12, "File size after gap write is 12 bytes");
+
+        // Verify gap bytes (offset 4, size 4) are indeed 0x00
+        std::vector<uint8_t> gap = file.readFileBytes(4, 4);
+        bool allZero = (gap.size() == 4);
+        for (uint8_t b : gap) {
+            if (b != 0) { allZero = false; break; }
+        }
+        TEST_CHECK(allZero, "Intermediate gap bytes are verified 0x00 padded");
+
+        // Verify data after gap is intact
+        std::vector<uint8_t> tail = file.readFileBytes(8, 4);
+        std::string tailStr(tail.begin(), tail.end());
+        TEST_CHECK(tailStr == "TAIL", "Data written after gap is intact");
+    }
+
+    cleanupTestFile();
+}
+
+// ----------------------------------------------------------------------------
+// Test 4: Read Boundaries and Clamping
+// ----------------------------------------------------------------------------
+void test_read_edge_cases() {
+    ESP_LOGI(TAG, "--- Test: Read Boundaries and Clamping ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+        file.writeFile("0123456789", 0); // 10 bytes
+
+        // size = -1 should read all remaining bytes to EOF
+        std::vector<uint8_t> toEnd = file.readFileBytes(5, -1);
+        std::string strToEnd(toEnd.begin(), toEnd.end());
+        TEST_CHECK(strToEnd == "56789", "size = -1 reads cleanly to EOF");
+
+        // Requesting more bytes than exist should clamp to EOF
+        std::vector<uint8_t> clamped = file.readFileBytes(7, 100);
+        std::string strClamped(clamped.begin(), clamped.end());
+        TEST_CHECK(strClamped == "789", "Oversized read length is clamped to EOF");
+
+        // Reading at offset == fileSize should return an empty buffer
+        std::vector<uint8_t> oob = file.readFileBytes(10, 5);
+        TEST_CHECK(oob.empty(), "Offset == fileSize returns empty buffer");
+
+        // Reading past fileSize should return an empty buffer
+        std::vector<uint8_t> wayBeyond = file.readFileBytes(50, 5);
+        TEST_CHECK(wayBeyond.empty(), "Offset > fileSize returns empty buffer");
+    }
+
+    cleanupTestFile();
+}
+
+// ----------------------------------------------------------------------------
+// Test 5: In-Place Shift Left (Compaction)
+// ----------------------------------------------------------------------------
+void test_shift_left() {
+    ESP_LOGI(TAG, "--- Test: In-Place Shift Left (Compaction) ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+        // Initial layout (16 bytes): "AAAABBBBCCCCDDDD"
+        file.writeFile("AAAABBBBCCCCDDDD", 0);
+
+        // Shift "CCCCDDDD" (offset 8 to 16) left by 4 -> overwrites "BBBB" (4..11)
+        file.shiftBytes(4, true, 8, 16);
+
+        // Read back bytes 4..11
+        std::vector<uint8_t> shifted = file.readFileBytes(4, 8);
+        std::string result(shifted.begin(), shifted.end());
+        TEST_CHECK(result == "CCCCDDDD", "Left shift correctly moves region forward");
+    }
+
+    cleanupTestFile();
+}
+
+// ----------------------------------------------------------------------------
+// Test 6: In-Place Shift Right (Expansion)
+// ----------------------------------------------------------------------------
+void test_shift_right() {
+    ESP_LOGI(TAG, "--- Test: In-Place Shift Right (Expansion) ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+        // Initial layout (10 bytes): "0123456789"
+        file.writeFile("0123456789", 0);
+
+        // Shift "0123" (0 to 4) right by 2 -> destination starts at index 2
+        file.shiftBytes(2, false, 0, 4);
+
+        // Bytes 2..5 should now contain "0123"
+        std::vector<uint8_t> shifted = file.readFileBytes(2, 4);
+        std::string result(shifted.begin(), shifted.end());
+        TEST_CHECK(result == "0123", "Right shift correctly moves region backward");
+    }
+
+    cleanupTestFile();
+}
+
+// ----------------------------------------------------------------------------
+// Test 7: Truncate and Delete File
+// ----------------------------------------------------------------------------
+void test_truncate_and_delete() {
+    ESP_LOGI(TAG, "--- Test: Truncate and Delete File ---");
+    cleanupTestFile();
+
+    {
+        FileManager::SingleFile file(TEST_FILE);
+        file.writeFile("0123456789ABCDEF", 0); // 16 bytes
+        TEST_CHECK(file.fileSize() == 16, "File size is 16 bytes before truncate");
+
+        // Truncate to 5 bytes
+        TEST_CHECK(file.truncate(5), "ftruncate down to 5 bytes returned success");
+        TEST_CHECK(file.fileSize() == 5, "fileSize() is updated to 5 bytes");
+
+        std::vector<uint8_t> rem = file.readFileBytes(0, -1);
+        std::string remStr(rem.begin(), rem.end());
+        TEST_CHECK(remStr == "01234", "Content matches truncated boundary");
+
+        // Self deletion
+        TEST_CHECK(file.deleteFile(), "deleteFile() on self returned success");
+        TEST_CHECK(!FileManager::exists(TEST_FILE), "File confirmed deleted via FileManager::exists()");
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Test Runner
+// ----------------------------------------------------------------------------
+void runSingleFileTests() {
+    ESP_LOGI(TAG, "==================================================");
+    ESP_LOGI(TAG, "       RUNNING COMPREHENSIVE SINGLEFILE TESTS     ");
+    ESP_LOGI(TAG, "==================================================");
+
+    s_tests_run = 0;
+    s_tests_passed = 0;
+    s_tests_failed = 0;
+
+    test_basic_write_read();
+    test_consecutive_appends();
+    test_zero_padding();
+    test_read_edge_cases();
+    test_shift_left();
+    test_shift_right();
+    test_truncate_and_delete();
+
+    ESP_LOGI(TAG, "==================================================");
+    ESP_LOGI(TAG, "RESULTS: %d / %d assertions passed (%d failed)", 
+             s_tests_passed, s_tests_run, s_tests_failed);
+    ESP_LOGI(TAG, "==================================================");
+}
+
+} // anonymous namespace
+
+// ----------------------------------------------------------------------------
+// Main Application Entry Point
+// ----------------------------------------------------------------------------
+extern "C" void app_main(void) {
+    // 1. Mount filesystem partition (Level 1)
+    esp_err_t err = FileManager::init("/spiffs", "my_files", 5);
+    if (err != ESP_OK) {
+        ESP_LOGE("MAIN", "Filesystem initialization failed! Check partition table.");
+        return;
+    }
+
+    // 2. Run the test suite
+    runSingleFileTests();
+
+    // 3. Unmount SPIFFS
+    FileManager::deinit();
+}
+
+#endif // TestSingleFile
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if defined(TestFIFO) // Encloses entire test suite under the macro
+
+
+
+#include "file_manager.hpp" // Level 1 filesystem mount and deletion utilities
+#include "single_file.hpp"  // Level 2 SingleFile utility for size verification
+#include "FIFO_file.hpp"    // FIFO class under test
+#include "esp_log.h"        // ESP-IDF console logging
+#include <vector>           // std::vector
+#include <string>           // std::string
+#include <cstring>          // std::memcmp
+
+// ============================================================================
+// CONFIGURATION MACRO (Comment out to disable test compilation)
+// ============================================================================
+#define TestFIFO 1 // Activates the FIFO test suite
+
+
+
+namespace { // Anonymous namespace to keep test utilities private
+
+static const char* TAG = "TestFIFO"; // Log identifier for test output
+static const char* TEST_FILE = "fifo_test.bin"; // Dedicated test file on SPIFFS
+
+// Global assertion counters
+static int s_tests_run = 0;    // Number of assertions executed
+static int s_tests_passed = 0; // Number of assertions passed
+static int s_tests_failed = 0; // Number of assertions failed
+
+// Assertion helper macro that records file, line, and status
+#define TEST_CHECK(condition, desc) do { \
+    s_tests_run++; \
+    if (condition) { \
+        s_tests_passed++; \
+        ESP_LOGI(TAG, "  [PASS] %s", desc); \
+    } else { \
+        s_tests_failed++; \
+        ESP_LOGE(TAG, "  [FAIL] %s (Line %d: %s)", desc, __LINE__, #condition); \
+    } \
+} while (0)
+
+// Helper to remove any leftover test file from prior runs
+void cleanupTestFile() {
+    if (FileManager::exists(TEST_FILE)) { // Checks if test file exists
+        FileManager::deleteFile(TEST_FILE); // Deletes file to ensure clean test state
+    } // Closes check
+} // Closes cleanupTestFile
+
+// ----------------------------------------------------------------------------
+// Test 1: Basic Push, Pop, and Empty Queue
+// ----------------------------------------------------------------------------
+void test_basic_push_pop() {
+    ESP_LOGI(TAG, "--- Test: Basic Push, Pop, and Empty Queue ---"); // Log banner
+    cleanupTestFile(); // Ensure clean slate
+
+    { // Scope block
+        file::FIFO queue(TEST_FILE); // Create FIFO instance
+
+        TEST_CHECK(queue.empty(), "Newly created FIFO reports empty"); // Assert initially empty
+
+        std::vector<uint8_t> p1 = {0x01, 0x02, 0x03}; // Test packet 1
+        std::vector<uint8_t> p2 = {0xAA, 0xBB, 0xCC, 0xDD}; // Test packet 2
+
+        queue.push_back(p1); // Push packet 1
+        queue.push_back(p2); // Push packet 2
+        queue.flush(); // Flush writes to disk
+
+        TEST_CHECK(!queue.empty(), "FIFO is not empty after pushing packets"); // Assert not empty
+
+        queue.begin_pop_mode(); // Switch to pop mode
+
+        std::vector<uint8_t> out1 = queue.Pop(); // Pop packet 1
+        TEST_CHECK(out1 == p1, "First popped packet matches packet 1"); // Assert exact payload match
+
+        std::vector<uint8_t> out2 = queue.Pop(); // Pop packet 2
+        TEST_CHECK(out2 == p2, "Second popped packet matches packet 2"); // Assert exact payload match
+
+        TEST_CHECK(queue.empty(), "FIFO reports empty after all packets are popped"); // Assert empty
+
+        std::vector<uint8_t> out3 = queue.Pop(); // Attempt popping empty queue
+        TEST_CHECK(out3.empty(), "Popping an empty FIFO returns empty vector"); // Assert safe empty return
+    } // Closes FIFO instance
+
+    cleanupTestFile(); // Clean up test file
+} // Closes test_basic_push_pop
+
+// ----------------------------------------------------------------------------
+// Test 2: Cache Overflow / Batching Across Multiple Blocks
+// ----------------------------------------------------------------------------
+void test_cache_overflow() {
+    ESP_LOGI(TAG, "--- Test: Cache Overflow (Over 1024 Bytes) ---"); // Log banner
+    cleanupTestFile(); // Ensure clean slate
+
+    { // Scope block
+        file::FIFO queue(TEST_FILE); // Create FIFO instance
+
+        constexpr size_t NUM_PACKETS = 15; // 15 packets
+        constexpr size_t PACKET_SIZE = 100; // 100 bytes each -> total 1500 bytes (exceeds 1024-byte cache)
+
+        std::vector<std::vector<uint8_t>> expectedPackets; // Track expected payloads
+
+        for (size_t i = 0; i < NUM_PACKETS; i++) { // Loop to push packets
+            std::vector<uint8_t> packet(PACKET_SIZE, static_cast<uint8_t>(i + 1)); // Payload filled with (i+1)
+            expectedPackets.push_back(packet); // Store expected payload
+            queue.push_back(packet); // Enqueue packet into FIFO (triggers auto-flush when cache fills)
+        } // Closes loop
+
+        queue.flush(); // Flush any remaining cached data
+
+        queue.begin_pop_mode(); // Switch to pop mode
+
+        bool allMatched = true; // Tracking flag
+        for (size_t i = 0; i < NUM_PACKETS; i++) { // Loop to pop packets
+            std::vector<uint8_t> out = queue.Pop(); // Dequeue packet
+            if (out != expectedPackets[i]) { // Verify exact payload match
+                allMatched = false; // Flag mismatch
+                break; // Abort
+            } // Closes mismatch check
+        } // Closes loop
+
+        TEST_CHECK(allMatched, "All 15 packets popped in exact order across cache flushes"); // Assert match
+        TEST_CHECK(queue.empty(), "Queue is empty after reading all overflowed packets"); // Assert empty
+    } // Closes FIFO instance
+
+    cleanupTestFile(); // Clean up test file
+} // Closes test_cache_overflow
+
+// ----------------------------------------------------------------------------
+// Test 3: Oversized Packet & Order Integrity
+// ----------------------------------------------------------------------------
+void test_oversized_packet_order() {
+    ESP_LOGI(TAG, "--- Test: Oversized Packet & Order Integrity ---"); // Log banner
+    cleanupTestFile(); // Ensure clean slate
+
+    { // Scope block
+        file::FIFO queue(TEST_FILE); // Create FIFO instance
+
+        std::vector<uint8_t> p1 = {0x11, 0x22}; // Small packet (sits in cache)
+        std::vector<uint8_t> p2(1200, 0xEE);    // Oversized packet (1200 bytes > 1024-byte cache capacity)
+        std::vector<uint8_t> p3 = {0x33, 0x44}; // Small packet (pushed after oversized packet)
+
+        queue.push_back(p1); // Enqueue small packet 1 into cache_
+        queue.push_back(p2); // Enqueue oversized packet 2 (MUST flush p1 first, then write p2!)
+        queue.push_back(p3); // Enqueue small packet 3 into fresh cache_
+        queue.flush(); // Commit all to storage
+
+        queue.begin_pop_mode(); // Switch to pop mode
+
+        std::vector<uint8_t> out1 = queue.Pop(); // Pop 1st packet
+        TEST_CHECK(out1 == p1, "Packet 1 popped first (cached data was not bypassed!)"); // Assert p1 first
+
+        std::vector<uint8_t> out2 = queue.Pop(); // Pop 2nd packet
+        TEST_CHECK(out2 == p2, "Packet 2 popped second (oversized packet intact)"); // Assert p2 second
+
+        std::vector<uint8_t> out3 = queue.Pop(); // Pop 3rd packet
+        TEST_CHECK(out3 == p3, "Packet 3 popped third (post-oversized packet intact)"); // Assert p3 third
+
+        TEST_CHECK(queue.empty(), "FIFO is empty after popping all three packets"); // Assert empty
+    } // Closes FIFO instance
+
+    cleanupTestFile(); // Clean up test file
+} // Closes test_oversized_packet_order
+
+// ----------------------------------------------------------------------------
+// Test 4: Head Persistence Across Reboots / Re-instantiation
+// ----------------------------------------------------------------------------
+void test_head_persistence_across_reboots() {
+    ESP_LOGI(TAG, "--- Test: Head Persistence Across Reboots ---"); // Log banner
+    cleanupTestFile(); // Ensure clean slate
+
+    std::vector<uint8_t> p1 = {0xAA, 0x01}; // Packet 1
+    std::vector<uint8_t> p2 = {0xBB, 0x02}; // Packet 2
+    std::vector<uint8_t> p3 = {0xCC, 0x03}; // Packet 3
+
+    // Phase 1: Push 3 packets, pop 1, and destroy the object (simulating reboot)
+    { // Scope block 1
+        file::FIFO queue(TEST_FILE); // Instantiate first FIFO object
+        queue.push_back(p1); // Push packet 1
+        queue.push_back(p2); // Push packet 2
+        queue.push_back(p3); // Push packet 3
+        queue.flush(); // Commit writes
+
+        queue.begin_pop_mode(); // Switch to pop mode
+        std::vector<uint8_t> out1 = queue.Pop(); // Pop packet 1 (head_ advances past p1)
+        TEST_CHECK(out1 == p1, "Phase 1: Successfully popped packet 1"); // Assert p1
+        queue.flush(); // Persist advanced head_ to disk header
+    } // FIFO instance destroyed here; destructor commits final state
+
+    // Phase 2: Create a brand new FIFO instance on the same file (simulating post-reboot)
+    { // Scope block 2
+        file::FIFO queue(TEST_FILE); // Boot up: constructor must load persistent head_ from disk
+        TEST_CHECK(!queue.empty(), "Phase 2: Reloaded FIFO recognizes pending unread packets"); // Assert not empty
+
+        queue.begin_pop_mode(); // Switch to pop mode
+        std::vector<uint8_t> out2 = queue.Pop(); // Pop next packet
+        TEST_CHECK(out2 == p2, "Phase 2: Successfully resumed and popped packet 2"); // Assert p2 popped
+
+        std::vector<uint8_t> out3 = queue.Pop(); // Pop next packet
+        TEST_CHECK(out3 == p3, "Phase 2: Successfully popped packet 3"); // Assert p3 popped
+
+        TEST_CHECK(queue.empty(), "Phase 2: Queue is now completely empty"); // Assert empty
+    } // Closes scope block 2
+
+    cleanupTestFile(); // Clean up test file
+} // Closes test_head_persistence_across_reboots
+
+// ----------------------------------------------------------------------------
+// Test 5: Instant Truncation on Exhaustion (Zero Shift Wear)
+// ----------------------------------------------------------------------------
+void test_instant_truncation_on_exhaustion() {
+    ESP_LOGI(TAG, "--- Test: Instant Truncation on Exhaustion ---"); // Log banner
+    cleanupTestFile(); // Ensure clean slate
+
+    { // Scope block
+        file::FIFO queue(TEST_FILE); // Create FIFO instance
+
+        // Push 10 packets of 50 bytes each
+        for (int i = 0; i < 10; i++) { // Loop
+            queue.push_back(std::vector<uint8_t>(50, 0x77)); // Push packet
+        } // Closes loop
+        queue.flush(); // Commit to disk
+
+        // Verify file expanded beyond header
+        FileManager::SingleFile checker(TEST_FILE); // Open inspection handle
+        TEST_CHECK(checker.fileSize() > 8, "File size grew with pushed packets"); // Assert grew
+
+        // Drain the queue completely
+        queue.begin_pop_mode(); // Switch to pop mode
+        while (!queue.empty()) { // Drain loop
+            queue.Pop(); // Pop packet
+        } // Closes loop
+
+        // When exhausted, file should instantly truncate back to HEADER_SIZE (8 bytes)
+        TEST_CHECK(checker.fileSize() == 8, "Exhausted FIFO instantly truncated to 8 bytes (Header size)"); // Assert 8 bytes
+    } // Closes FIFO instance
+
+    cleanupTestFile(); // Clean up test file
+} // Closes test_instant_truncation_on_exhaustion
+
+// ----------------------------------------------------------------------------
+// Test 6: Compaction on Large Dead Gap (>4096 Bytes)
+// ----------------------------------------------------------------------------
+void test_compaction_on_large_gap() {
+    ESP_LOGI(TAG, "--- Test: Compaction on Large Dead Gap ---"); // Log banner
+    cleanupTestFile(); // Ensure clean slate
+
+    { // Scope block
+        file::FIFO queue(TEST_FILE); // Create FIFO instance
+
+        // Push 50 packets of 100 bytes each (50 * 104 = 5200 bytes on disk)
+        for (int i = 0; i < 50; i++) { // Loop
+            queue.push_back(std::vector<uint8_t>(100, static_cast<uint8_t>(i))); // Push packet
+        } // Closes loop
+        queue.flush(); // Commit to disk
+
+        queue.begin_pop_mode(); // Switch to pop mode
+
+        // Pop 45 packets: (45 * 104 = 4680 bytes of dead gap > GAP_THRESHOLD of 4096)
+        for (int i = 0; i < 45; i++) { // Loop
+            queue.Pop(); // Pop packet
+        } // Closes loop
+
+        // Switch to push mode: this triggers maybeCompact(), which should detect gap >= 4096
+        queue.begin_push_mode(); // Switches mode and executes compactDisk()
+
+        // 5 unread packets (indices 45..49) must survive the shift completely intact
+        queue.begin_pop_mode(); // Switch back to pop mode
+
+        bool remainingValid = true; // Validation flag
+        for (int i = 45; i < 50; i++) { // Loop over remaining 5 packets
+            std::vector<uint8_t> out = queue.Pop(); // Pop packet
+            std::vector<uint8_t> expected(100, static_cast<uint8_t>(i)); // Expected payload
+            if (out != expected) { // Compare
+                remainingValid = false; // Flag error
+                break; // Abort
+            } // Closes check
+        } // Closes loop
+
+        TEST_CHECK(remainingValid, "Remaining 5 packets are 100% intact after 4KB dead space shift"); // Assert intact
+        TEST_CHECK(queue.empty(), "Queue is empty after popping surviving packets"); // Assert empty
+    } // Closes FIFO instance
+
+    cleanupTestFile(); // Clean up test file
+} // Closes test_compaction_on_large_gap
+
+} // anonymous namespace
+
+// ----------------------------------------------------------------------------
+// Global FIFO Test Runner
+// ----------------------------------------------------------------------------
+void runFIFOTests() { // Test runner function
+    ESP_LOGI(TAG, "=================================================="); // Header banner
+    ESP_LOGI(TAG, "           RUNNING COMPREHENSIVE FIFO TESTS       "); // Header title
+    ESP_LOGI(TAG, "=================================================="); // Header separator
+
+    s_tests_run = 0; // Reset total counter
+    s_tests_passed = 0; // Reset pass counter
+    s_tests_failed = 0; // Reset fail counter
+
+    // Run test cases sequentially
+    test_basic_push_pop(); // Run Test 1
+    test_cache_overflow(); // Run Test 2
+    test_oversized_packet_order(); // Run Test 3
+    test_head_persistence_across_reboots(); // Run Test 4
+    test_instant_truncation_on_exhaustion(); // Run Test 5
+    test_compaction_on_large_gap(); // Run Test 6
+
+    ESP_LOGI(TAG, "=================================================="); // Footer banner
+    ESP_LOGI(TAG, "FIFO RESULTS: %d / %d assertions passed (%d failed)", // Summary output
+             s_tests_passed, s_tests_run, s_tests_failed); // Variables
+    ESP_LOGI(TAG, "=================================================="); // Footer separator
+} // Closes runFIFOTests
+
+// ============================================================================
+// MAIN APPLICATION ENTRY POINT
+// ============================================================================
+extern "C" void app_main(void) { // ESP-IDF application entry point
+    // 1. Mount filesystem partition (Level 1)
+    esp_err_t err = FileManager::init("/spiffs", "my_files", 5); // Mount SPIFFS
+    if (err != ESP_OK) { // Validate mount
+        ESP_LOGE("MAIN", "Filesystem init failed! Check partition table."); // Log error
+        return; // Abort
+    } // Closes mount check
+
+    // 2. Execute the test suite
+    runFIFOTests(); // Run all FIFO test cases
+
+    // 3. Unmount SPIFFS
+    FileManager::deinit(); // Unmount filesystem cleanly
+} // Closes app_main
+
+#endif // TestFIFO

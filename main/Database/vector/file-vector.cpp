@@ -28,56 +28,6 @@ fileVector::fileVector(std::string fileName)
     }
 }
 
-// Method to append raw byte data (using writeFile with offset = -1 for append mode)
-// void fileVector::push_back(const std::vector<uint8_t>& data) {
-//     //TODO:add a timer to see the bottleneck.
-//     int64_t start_total = esp_timer_get_time();
-
-//     std::string jsonPath = fileName + ".json";
-//     std::string jsonStr = readTextFile(jsonPath);
-
-//     JsonDocument doc;
-//     DeserializationError error = deserializeJson(doc, jsonStr);
-    
-//     if (error) {
-//         doc.clear();
-//         doc["elements"] = JsonArray();
-//     }
-
-//     // JsonArray elements = doc["elements"].to<JsonArray>();
-// // FIX: Use .as<JsonArray>() instead of .to<JsonArray>() so it doesn't wipe existing elements!
-//     JsonArray elements = doc["elements"].as<JsonArray>();
-//     if (elements.isNull()) {
-//         elements = doc["elements"].to<JsonArray>();
-//     }
-
-//     int currentOffset = 0;
-//     if (elements.size() > 0) {
-//         // FIX: Replaced elements.back() with elements[elements.size() - 1] for ArduinoJson v7
-//         JsonObject lastElement = elements[elements.size() - 1];
-//         currentOffset = lastElement["offset"].as<int>() + lastElement["byteSize"].as<size_t>();
-//     }
-
-//     // Use writeFile with offset < 0 (-1) for append mode
-//     FileManager::writeFile(fileName, data, -1);
-
-//     JsonObject newElement = elements.add<JsonObject>();
-//     newElement["byteSize"] = data.size();
-//     newElement["offset"] = currentOffset;
-//     newElement["AddingTime"] = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-
-//     std::string updatedJson;
-//     serializeJson(doc, updatedJson);
-//     FileManager::writeFile(jsonPath, updatedJson, 0);
-
-//     //TODO:see the duration;
-//     int64_t time_total = esp_timer_get_time() - start_total;
-
-//     // Log the breakdown (times are in microseconds)
-//     ESP_LOGI(TAG, "push_back bench: Total=%lld us | Read=%lld us | Parse=%lld us | BinWrite=%lld us | JsonWrite=%lld us",
-//              time_total, time_read, time_parse, time_bin_write, time_json_write);
-// } 
-
 void fileVector::push_back(const std::vector<uint8_t>& data) {
     // Start total timer
     int64_t start_total = esp_timer_get_time();
