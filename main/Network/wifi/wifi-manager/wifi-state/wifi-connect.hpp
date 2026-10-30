@@ -669,18 +669,6 @@ inline void on_wifi_connected(const char *event, const void *data, size_t len, v
     // Log successful connection details including SSID, RSSI, and channel
     ESP_LOGI(TAG, "+++++++++++++++++++++++++++++++WiFi connected event tag [%s] to SSID: %s (RSSI: %d dBm, Channel: %d)",
              event, info->ssid, info->rssi, info->channel);
-
- 
-
-         // Record the comprehensive status object directly into persistent file storage
-        if (wifiConditionRecorderFile) {
-          // Get current uptime in milliseconds using ESP-IDF timer to populate the time field
-        uint32_t current_time_ms = (uint32_t)(esp_timer_get_time() / 1000);
-
-        // Package the connection info and timestamp into our wrapper struct and save it
-        wifiConditionRecorderFile->save(connected_wifi{*info, current_time_ms});
-        }
-
   
 }
 
