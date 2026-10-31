@@ -38,7 +38,6 @@ public:
     // Reads binary bytes starting from offset (size < 0 reads until end-of-file)
     std::vector<uint8_t> readFileBytes(long offset = 0, long size = -1); // Reads chunk from file
 
-    // Shifts a region of bytes left (compaction) or right (expansion) in-place without temp files
     void shiftBytes(size_t shiftDistance, bool left, long long startOffset = -1, long long endOffset = -1); // Moves byte ranges
 
     // Truncates or extends the file to the specified byte size
@@ -50,13 +49,15 @@ public:
     // Computes and returns the current total byte size of the file
     size_t fileSize(); // Returns file size in bytes
     void flush();
+    bool seek(long offset, int whence = SEEK_SET); // Internal helper to position file cursor
+
 private:
     FILE* m_file = nullptr; // Persistent standard C file stream handle
     std::string m_filename; // Relative filename bound to this object
-    std::string m_fullPath; // Resolved full VFS path (e.g., "/spiffs/my_file.bin")
+    std::string m_fullPath; //  
 
     bool openInternal(); // Internal helper to open or create file if not currently open
-    bool seek(long offset, int whence = SEEK_SET); // Internal helper to position file cursor
+
 }; // Closes SingleFile class declaration
 
 } // namespace FileManager // Closes namespace

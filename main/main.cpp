@@ -1,4 +1,4 @@
-  #define TestFIFO
+  #define MainRun
   
   #if defined (MainRun)
 #include "Opus.hpp"
@@ -26,7 +26,7 @@ static uint16_t Search_mp3_file_count = 0;
 static char music_buf[120] = {0};
 static int16_t now_play_id = 0;
 //TODO change 32768 To 49152
-static int magicStackNumber = 49152;
+static int magicStackNumber = 9152;
  
 void app_run_loop(void* pvParameters);
 // 按键回调函数

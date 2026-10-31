@@ -171,20 +171,19 @@
 #include <string>
 #include "file_manager.hpp"
 #include "firmware_switch.hpp" 
-#include "WiFiManager.hpp" 
-#include "Opus.hpp"
-#include "Lc3.hpp"
+#include "WiFiManager.hpp"  
 #include "file_manager.hpp"
 #include "firmware_switch.hpp"
 #include "wifi/shared.hpp"
 #include "Net manager.hpp" 
 #include <stdio.h>
 #include <sys/statvfs.h> 
+#include " audio_service.hpp"
 
 // [CHANGE]: Included FreeRTOS headers explicitly for xTaskCreatePinnedToCore
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
+#include "protocol/server/audio/turn_on_audio.hpp"
 /*
 add comment to where you change and preserve every comment for future review
 */
@@ -194,6 +193,7 @@ const char* host ="172.30.165.156";
  const char* ssid="Dalintern device";
   const char* password= "cykcykcyk";  
    const char* TAG = "app_run_loop";
+   using namespace Protocol;
 void check_filesystem_space() {
     struct statvfs vfs;
     
@@ -214,50 +214,6 @@ void check_filesystem_space() {
     ESP_LOGE(TAG, "++++++++++++++++++++++++++++++++++++++++++++++++++++All systems initialized successfully. Entering main loop.");
 }
 
-// ============================================================================
-// [CHANGE]: New Dedicated Audio Processing Task Pinned to Core 1
-// ============================================================================
-// Separating audio sampling and Opus encoding onto Core 1 prevents audio jitter
-// and leaves Core 0 completely free to service the Wi-Fi and TCP/IP stack.
-void audio_processing_task(void* pvParameters) {
-    ESP_LOGI("AUDIO_TASK", "Audio processing task started on Core %d", xPortGetCoreID());
-
-    // [CHANGE]: Moved hardware driver initialization into this dedicated task
-    std::shared_ptr<Hardware::AudioCaptureDriver> s_AudioCaptureDriver = std::make_shared<Hardware::AudioCaptureDriver>();
-
-    // [CHANGE]: Moved Opus encoder initialization into this dedicated task
-    std::shared_ptr<Opus> s_Opus = std::make_shared<Opus>();
-    s_Opus->init(
-        macroPhone::argument::sample_rate,
-        macroPhone::argument::channel_count,
-        macroPhone::argument::bits_per_chan,
-        macroPhone::argument::target_frame_duration_ms
-    );
-
-    uint32_t frameCount = 0;
-
-    while (true) {
-        // 2. Read new PCM frame from hardware
-        auto ret = s_AudioCaptureDriver->readSamples();
-        if (ret == ESP_OK) {
-            // 3. Get modern C++ std::span pointing to the raw PSRAM data
-            auto raw_pcm = s_AudioCaptureDriver->getFrameBuffer(); 
-            auto compressed_pcm = s_Opus->encode(raw_pcm.data()); 
-
-            // [CHANGE]: Network::send is thread-safe (producer-consumer double buffer),
-            // so sending from Core 1 to the network thread on Core 0 is safe.
-            Network::send(compressed_pcm); 
-            frameCount++;
-        } 
-        else {
-            ESP_LOGW("++++++++++++", "Failed to read audio samples, retrying...");
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
-    }
-
-    vTaskDelete(NULL);
-}
 
 
 // This function acts as the FreeRTOS task routine
@@ -274,7 +230,7 @@ check_filesystem_space();
     FileManager::init();
     wifi::init();
     Network::init(host,port);
-
+AudioService::start();
 
 
 
@@ -283,20 +239,6 @@ check_filesystem_space();
 
     ESP_LOGI("APP_LOOP", "All systems initialized successfully. Entering main loop.");
 
-    // =========================================================================
-    // [CHANGE]: Launch Audio Capture & Opus Encode Task pinned to CPU Core 1
-    // =========================================================================
-    // Stack size is 16384 bytes (16KB) to safely accommodate Opus internal frame buffers.
-    // Priority is set to 5 (higher priority) to avoid dropping audio I2S DMA buffers.
-    xTaskCreatePinnedToCore(
-        audio_processing_task,
-        "audio_proc_task",
-        16384,                  // Stack size in bytes
-        nullptr,                // Task parameters
-        5,                      // Task Priority (Higher than standard tasks)
-        nullptr,                // Task handle
-        1                       // Pinned to CPU Core 1
-    );
 
     while (true) {
 
@@ -304,6 +246,30 @@ check_filesystem_space();
 
  std::vector<uint8_t>pulled_result =  Network::poll_and_receive();
 if(pulled_result.size()>0){
+    
+    
+    
+if( RecordControl::Client::is_record_control(pulled_result)){
+ auto result =   RecordControl::Client:: decode(pulled_result);
+if(result.has_value()){
+    if(result.value().command == RecordControl::RecordCommand::START){
+        //TODO turn on the audio;
+        if(! AudioService::is_running()){
+            AudioService::start();
+        }
+    }
+    else{
+           if( AudioService::is_running()){
+            AudioService::stop();
+        }
+    }
+}
+}
+ 
+  
+
+
+
     //TODO: handle the result;
 
     ESP_LOGI("Server", "Get server information");

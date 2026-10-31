@@ -1,293 +1,571 @@
-#include "FIFO_file.hpp" // Class declaration header
-#include "esp_log.h"      // ESP-IDF logging library
-#include <algorithm>      // std::min and std::max
-#include <cstring>        // std::memcpy
+// #include "FIFO_file.hpp"
+// #include "esp_log.h"
+// #include <algorithm>
+// #include <cstring>
 
-namespace file { // Opens file namespace implementation block
+// namespace file {
 
-static const char* TAG = "FIFO"; // Logging identifier for console messages
+// static const char* TAG = "FIFO";
 
-FIFO::FIFO(std::string fileName) // Constructor definition
-    : fileName_(std::move(fileName)), // Moves input filename into member variable
-      file_(fileName_), // Initializes SingleFile instance with target filename
-      head_(HEADER_SIZE) { // Defaults head to point immediately after the header
-    cache_.reserve(CACHE_CAPACITY); // Pre-allocates memory for the cache to prevent reallocations
-    initHeader(); // Reads existing head from file header or formats new header on boot
-    begin_push_mode(); // Starts in push mode by default
-} // Closes constructor definition
+// FIFO::FIFO(std::string fileName, size_t cacheCapacity)
+//     : fileName_(std::move(fileName)),
+//       file_(fileName_),
+//       cacheCapacity_(cacheCapacity),
+//       head_(HEADER_SIZE),
+//       diskFileSize_(0) {
+//     writeCache_.reserve(32 * 1024);
+//     readCache_.reserve(16 * 1024);
 
-FIFO::~FIFO() { // Destructor definition
-    if (pushMode_) { // If destroying while in push mode
-        flush(); // Flush any remaining cached data packets
-    } // Closes push check
-    writeHeadToDisk(true); // Persist final head position to disk with full stream flush
-} // Closes destructor definition
+//     initHeader();
+// }
 
-FIFO::FIFO(FIFO&& other) noexcept // Move constructor definition
-    : fileName_(std::move(other.fileName_)), // Adopts filename
-      file_(std::move(other.file_)), // Adopts SingleFile handle
-      cache_(std::move(other.cache_)), // Adopts cache buffer
-      cachePos_(other.cachePos_), // Copies cache position
-      head_(other.head_), // Copies head pointer
-      pushMode_(other.pushMode_), // Copies push mode flag
-      popMode_(other.popMode_) { // Copies pop mode flag
-    other.cachePos_ = 0; // Clears other's cursor
-    other.head_ = HEADER_SIZE; // Resets other's head pointer
-    other.pushMode_ = false; // Resets other's push flag
-    other.popMode_ = false; // Resets other's pop flag
-} // Closes move constructor definition
+// FIFO::~FIFO() {
+//     flush();
+// }
 
-FIFO& FIFO::operator=(FIFO&& other) noexcept { // Move assignment operator definition
-    if (this != &other) { // Protects against self-assignment
-        if (pushMode_) { // Check for uncommitted writes
-            flush(); // Flush writes before releasing resources
-        } // Closes flush check
-        writeHeadToDisk(true); // Save current head state
+// FIFO::FIFO(FIFO&& other) noexcept
+//     : fileName_(std::move(other.fileName_)),
+//       file_(std::move(other.file_)),
+//       cacheCapacity_(other.cacheCapacity_),
+//       writeCache_(std::move(other.writeCache_)),
+//       writeCachePos_(other.writeCachePos_),
+//       readCache_(std::move(other.readCache_)),
+//       readCachePos_(other.readCachePos_),
+//       head_(other.head_),
+//       diskFileSize_(other.diskFileSize_) {
+//     other.head_ = HEADER_SIZE;
+//     other.diskFileSize_ = 0;
+//     other.writeCachePos_ = 0;
+//     other.readCachePos_ = 0;
+// }
 
-        fileName_ = std::move(other.fileName_); // Transfer filename
-        file_ = std::move(other.file_); // Transfer SingleFile handle
-        cache_ = std::move(other.cache_); // Transfer cache
-        cachePos_ = other.cachePos_; // Transfer cache cursor
-        head_ = other.head_; // Transfer head offset
-        pushMode_ = other.pushMode_; // Transfer push flag
-        popMode_ = other.popMode_; // Transfer pop flag
+// FIFO& FIFO::operator=(FIFO&& other) noexcept {
+//     if (this != &other) {
+//         flush();
 
-        other.cachePos_ = 0; // Invalidate other's cursor
-        other.head_ = HEADER_SIZE; // Reset other's head
-        other.pushMode_ = false; // Reset other's push flag
-        other.popMode_ = false; // Reset other's pop flag
-    } // Closes self-assignment check
-    return *this; // Return reference to self
-} // Closes move assignment definition
+//         fileName_ = std::move(other.fileName_);
+//         file_ = std::move(other.file_);
+//         const_cast<size_t&>(cacheCapacity_) = other.cacheCapacity_;
+//         writeCache_ = std::move(other.writeCache_);
+//         writeCachePos_ = other.writeCachePos_;
+//         readCache_ = std::move(other.readCache_);
+//         readCachePos_ = other.readCachePos_;
+//         head_ = other.head_;
+//         diskFileSize_ = other.diskFileSize_;
 
-void FIFO::initHeader() { // Restores or initializes header on boot
-    size_t sz = file_.fileSize(); // Query current file length on flash
+//         other.head_ = HEADER_SIZE;
+//         other.diskFileSize_ = 0;
+//         other.writeCachePos_ = 0;
+//         other.readCachePos_ = 0;
+//     }
+//     return *this;
+// }
 
-    if (sz >= HEADER_SIZE) { // File already contains at least the header
-        std::vector<uint8_t> hdr = file_.readFileBytes(0, HEADER_SIZE); // Read 8-byte header
-        uint32_t magic = 0; // Temporary magic holder
-        uint32_t loadedHead = 0; // Temporary head holder
-        std::memcpy(&magic, hdr.data(), sizeof(uint32_t)); // Extract 4-byte magic
-        std::memcpy(&loadedHead, hdr.data() + 4, sizeof(uint32_t)); // Extract 4-byte head offset
+// void FIFO::initHeader() {
+//     diskFileSize_ = static_cast<uint32_t>(file_.fileSize());
 
-        if (magic == FIFO_MAGIC) { // Validate magic identifier
-            head_ = loadedHead; // Restore persistent head position from previous boot
-            if (head_ < HEADER_SIZE || head_ > sz) { // Sanity check for corruption
-                head_ = HEADER_SIZE; // Reset to start if corrupted
-                writeHeadToDisk(true); // Persist corrected head
-            } // Closes corruption check
-            ESP_LOGI(TAG, "Loaded existing FIFO [%s], head at byte %u", fileName_.c_str(), (unsigned)head_); // Log boot load
-            return; // Successfully restored from disk
-        } // Closes magic check
-    } // Closes existing file check
+//     if (diskFileSize_ >= HEADER_SIZE) {
+//         std::vector<uint8_t> hdr = file_.readFileBytes(0, HEADER_SIZE);
+//         uint32_t magic = 0;
+//         uint32_t loadedHead = 0;
+//         std::memcpy(&magic, hdr.data(), sizeof(uint32_t));
+//         std::memcpy(&loadedHead, hdr.data() + 4, sizeof(uint32_t));
 
-    // File is empty or not yet configured as FIFO: initialize new header
-    uint8_t hdr[HEADER_SIZE] = {0}; // Zero-initialized header buffer
-    uint32_t magic = FIFO_MAGIC; // Magic value
-    uint32_t initHead = HEADER_SIZE; // Initial head points immediately after header
-    std::memcpy(hdr, &magic, sizeof(uint32_t)); // Copy magic to offset 0
-    std::memcpy(hdr + 4, &initHead, sizeof(uint32_t)); // Copy initial head (8) to offset 4
+//         if (magic == FIFO_MAGIC) {
+//             head_ = loadedHead;
+//             if (head_ < HEADER_SIZE || head_ > diskFileSize_) {
+//                 head_ = HEADER_SIZE;
+//                 writeHeadToDisk(true);
+//             }
 
-    file_.writeFile(std::vector<uint8_t>(hdr, hdr + HEADER_SIZE), 0); // Write 8-byte header at file offset 0
-    file_.flush(); // Ensure header is committed to flash
-    head_ = HEADER_SIZE; // Set in-memory head to point after header
-    ESP_LOGI(TAG, "Configured new FIFO file [%s]", fileName_.c_str()); // Log initial configuration
-} // Closes initHeader definition
+//             // If previously drained on last shutdown, clean up
+//             if (head_ >= diskFileSize_ && diskFileSize_ > HEADER_SIZE) {
+//                 file_.truncate(HEADER_SIZE);
+//                 diskFileSize_ = HEADER_SIZE;
+//                 head_ = HEADER_SIZE;
+//                 writeHeadToDisk(true);
+//             }
 
-void FIFO::writeHeadToDisk(bool forceFlush) { // Saves head_ to offset 4 of the file
-    uint8_t buf[sizeof(uint32_t)]; // Stack buffer for 4 bytes
-    std::memcpy(buf, &head_, sizeof(uint32_t)); // Serialize head_ in little-endian format
-    file_.writeFile(std::vector<uint8_t>(buf, buf + sizeof(uint32_t)), 4); // Overwrite offset 4 in file
-    if (forceFlush) { // If immediate physical sync requested
-        file_.flush(); // Force commit to SPIFFS flash
-    } // Closes forceFlush check
-} // Closes writeHeadToDisk definition
+//             ESP_LOGI(TAG, "Initialized FIFO [%s], head: %u, diskSize: %u, RAM capacity: %u KB",
+//                      fileName_.c_str(), (unsigned)head_, (unsigned)diskFileSize_, (unsigned)(cacheCapacity_ / 1024));
+//             return;
+//         }
+//     }
 
-void FIFO::begin_push_mode() { // Switches to write/push mode
-    if (pushMode_) return; // Already in push mode; no-op
+//     // Format new header
+//     uint8_t hdr[HEADER_SIZE] = {0};
+//     uint32_t magic = FIFO_MAGIC;
+//     uint32_t initHead = HEADER_SIZE;
+//     std::memcpy(hdr, &magic, sizeof(uint32_t));
+//     std::memcpy(hdr + 4, &initHead, sizeof(uint32_t));
 
-    if (popMode_) { // Transitioning from pop mode
-        cache_.clear(); // Discard pop read-ahead cache
-        cachePos_ = 0; // Reset read cursor
-        popMode_ = false; // Deactivate pop mode
-        maybeCompact(); // Only shift if the gap is truly large
-    } // Closes popMode transition check
+//     file_.writeFile(std::vector<uint8_t>(hdr, hdr + HEADER_SIZE), 0);
+//     file_.flush();
+//     head_ = HEADER_SIZE;
+//     diskFileSize_ = HEADER_SIZE;
+//     ESP_LOGI(TAG, "Formatted new FIFO file [%s]", fileName_.c_str());
+// }
 
-    pushMode_ = true; // Activate push mode
-    cache_.clear(); // Clear cache for write buffering
-    cache_.reserve(CACHE_CAPACITY); // Ensure buffer has reserved capacity
-} // Closes begin_push_mode definition
+// void FIFO::writeHeadToDisk(bool forceSync) {
+//     uint8_t buf[sizeof(uint32_t)];
+//     std::memcpy(buf, &head_, sizeof(uint32_t));
+//     file_.writeFile(std::vector<uint8_t>(buf, buf + sizeof(uint32_t)), 4);
+//     if (forceSync) {
+//         file_.flush();
+//     }
+// }
 
-void FIFO::begin_pop_mode() { // Switches to read/pop mode
-    if (popMode_) return; // Already in pop mode; no-op
+// // ----------------------------------------------------------------------------
+// // Commit unwritten RAM data to physical disk
+// // ----------------------------------------------------------------------------
+// void FIFO::commitWriteCacheToDisk() {
+//     // Only write remaining unpopped bytes from writeCache_
+//     if (writeCachePos_ < writeCache_.size()) {
+//         size_t bytesToWrite = writeCache_.size() - writeCachePos_;
+//         std::vector<uint8_t> slice(writeCache_.begin() + writeCachePos_, writeCache_.end());
+//         file_.writeFile(slice, -1);
+//         diskFileSize_ += static_cast<uint32_t>(bytesToWrite);
+//     }
+//     writeCache_.clear();
+//     writeCachePos_ = 0;
+// }
 
-    if (pushMode_) { // Transitioning from push mode
-        flush(); // Commit pending write cache to flash
-        pushMode_ = false; // Deactivate push mode
-    } // Closes pushMode transition check
+// void FIFO::push_back(std::vector<uint8_t> data) {
+//     if (data.empty()) return;
 
-    popMode_ = true; // Activate pop mode
-    cache_.clear(); // Clear write buffer residue
-    cachePos_ = 0; // Reset read cursor
-    refillPopCache(); // Prime read-ahead buffer from current head_ position
-} // Closes begin_pop_mode definition
+//     uint32_t len = static_cast<uint32_t>(data.size());
+//     size_t packetSize = sizeof(uint32_t) + len;
 
-void FIFO::push_back(std::vector<uint8_t> data) { // Enqueues a packet
-    if (!pushMode_) { // Auto-switch to push mode if needed
-        begin_push_mode(); // Switch mode
-    } // Closes auto-switch check
+//     // Check if adding this packet exceeds configured RAM limit
+//     if ((writeCache_.size() - writeCachePos_) + packetSize > cacheCapacity_) {
+//         // Spill RAM buffer to flash
+//         commitWriteCacheToDisk();
+//     }
 
-    uint32_t len = static_cast<uint32_t>(data.size()); // Payload length
-    size_t totalBytesNeeded = sizeof(uint32_t) + len; // 4-byte header + payload length
+//     // Serialize packet: [length (4B)] + [data]
+//     uint8_t lenBuf[sizeof(uint32_t)];
+//     std::memcpy(lenBuf, &len, sizeof(uint32_t));
+//     writeCache_.insert(writeCache_.end(), lenBuf, lenBuf + sizeof(uint32_t));
+//     writeCache_.insert(writeCache_.end(), data.begin(), data.end());
+// }
 
-    if (cache_.size() + totalBytesNeeded > CACHE_CAPACITY) { // If cache cannot fit packet
-        flush(); // Commit accumulated cache to flash
-    } // Closes capacity check
+// void FIFO::flush() {
+//     commitWriteCacheToDisk();
+//     writeHeadToDisk(true);
+// }
 
-    if (totalBytesNeeded > CACHE_CAPACITY) { // Oversized packet larger than whole cache
-        uint8_t header[sizeof(uint32_t)]; // Header buffer
-        std::memcpy(header, &len, sizeof(uint32_t)); // Serialize length
-        file_.writeFile(std::vector<uint8_t>(header, header + sizeof(uint32_t)), -1); // Append header
-        file_.writeFile(data, -1); // Append payload directly
-        file_.flush(); // Ensure oversized write is committed
-        return; // Done
-    } // Closes oversized packet check
+// // ----------------------------------------------------------------------------
+// // Pop(): Guaranteed Strict FIFO Ordering (Disk first, then RAM)
+// // ----------------------------------------------------------------------------
+// std::vector<uint8_t> FIFO::Pop() {
+//     // =========================================================================
+//     // CASE 1: There is older data on disk. Must drain disk first!
+//     // =========================================================================
+//     if (head_ < diskFileSize_) {
+//         // Ensure read cache has at least 4 bytes for length header
+//         if (readCachePos_ + sizeof(uint32_t) > readCache_.size()) {
+//             if (!refillReadCache()) {
+//                 // If refill fails, disk read error
+//                 return {};
+//             }
+//         }
 
-    // Serialize 4-byte length prefix directly into cache_
-    uint8_t lenBuf[sizeof(uint32_t)]; // Stack buffer for length
-    std::memcpy(lenBuf, &len, sizeof(uint32_t)); // Copy little-endian length
-    cache_.insert(cache_.end(), lenBuf, lenBuf + sizeof(uint32_t)); // Append header bytes to cache
+//         uint32_t len = 0;
+//         std::memcpy(&len, readCache_.data() + readCachePos_, sizeof(uint32_t));
+//         size_t totalBytes = sizeof(uint32_t) + len;
 
-    // Append payload bytes into cache_
-    cache_.insert(cache_.end(), data.begin(), data.end()); // Copy payload into cache
-} // Closes push_back definition
+//         // Fast path: packet is fully in readCache_
+//         if (readCachePos_ + totalBytes <= readCache_.size()) {
+//             size_t start = readCachePos_ + sizeof(uint32_t);
+//             std::vector<uint8_t> pkt(readCache_.begin() + start, readCache_.begin() + start + len);
 
-void FIFO::flush() { // Commits write cache and persists head
-    if (pushMode_ && !cache_.empty()) { // If there are pending unwritten packets
-        file_.writeFile(cache_, -1); // Append cache to end of file on disk
-        cache_.clear(); // Empty cache
-    } // Closes write check
-    writeHeadToDisk(true); // Persist current head pointer to disk header and flush stream
-} // Closes flush definition
+//             readCachePos_ += totalBytes;
+//             head_ += totalBytes;
 
-std::vector<uint8_t> FIFO::Pop() { // Dequeues the next packet
-    if (!popMode_) { // Auto-switch to pop mode if needed
-        begin_pop_mode(); // Switch mode
-    } // Closes auto-switch check
+//             // Check if disk has caught up with all written disk bytes
+//             if (head_ >= diskFileSize_) {
+//                 readCache_.clear();
+//                 readCachePos_ = 0;
 
-    // Check if cache contains at least 4 bytes for the length header
-    if (cachePos_ + sizeof(uint32_t) > cache_.size()) { // Cache has fewer than 4 bytes
-        if (!refillPopCache()) { // Fetch next block from disk at head_
-            return {}; // Return empty if EOF reached
-        } // Closes refill check
-        if (cachePos_ + sizeof(uint32_t) > cache_.size()) { // Still insufficient bytes after refill
-            return {}; // Corrupted or truncated packet; abort
-        } // Closes secondary length check
-    } // Closes header presence check
+//                 // CRITICAL FIX: Look at writeCache_ before truncating!
+//                 if (writeCachePos_ >= writeCache_.size()) {
+//                     // Both disk AND writeCache are empty! Safe to reset file completely!
+//                     file_.truncate(HEADER_SIZE);
+//                     head_ = HEADER_SIZE;
+//                     diskFileSize_ = HEADER_SIZE;
+//                     writeHeadToDisk(false);
+//                     writeCache_.clear();
+//                     writeCachePos_ = 0;
+//                 } else {
+//                     // Disk is caught up, but there is newer data in writeCache_!
+//                     // Do NOT truncate. The subsequent Pop() calls will seamlessly
+//                     // drain from writeCache_ below without touching disk!
+//                 }
+//             }
 
-    // Decode 4-byte length header
-    uint32_t len = 0; // Length variable
-    std::memcpy(&len, cache_.data() + cachePos_, sizeof(uint32_t)); // Read length from cache
-    size_t totalPacketBytes = sizeof(uint32_t) + len; // Calculate full frame size
+//             return pkt;
+//         }
 
-    // Fast path: entire packet resides in cache_
-    if (cachePos_ + totalPacketBytes <= cache_.size()) { // Packet fits inside buffer
-        size_t dataStart = cachePos_ + sizeof(uint32_t); // Calculate payload start index
-        size_t dataEnd = dataStart + len; // Calculate payload end index
+//         // Cache boundary: reload next aligned chunk
+//         refillReadCache();
+//         return Pop();
+//     }
 
-        std::vector<uint8_t> packet(cache_.begin() + dataStart, cache_.begin() + dataEnd); // Extract payload
+//     // =========================================================================
+//     // CASE 2: Disk is empty (or caught up). Pop directly from writeCache_ in RAM!
+//     // =========================================================================
+//     if (writeCachePos_ < writeCache_.size()) {
+//         if (writeCachePos_ + sizeof(uint32_t) > writeCache_.size()) {
+//             // Corrupt trailing bytes in RAM, reset
+//             writeCache_.clear();
+//             writeCachePos_ = 0;
+//             return {};
+//         }
 
-        cachePos_ += totalPacketBytes; // Advance cache read cursor
-        head_ += totalPacketBytes; // Advance disk head pointer
-        writeHeadToDisk(false); // Update head on disk (buffered, no immediate flush)
+//         uint32_t len = 0;
+//         std::memcpy(&len, writeCache_.data() + writeCachePos_, sizeof(uint32_t));
+//         size_t totalBytes = sizeof(uint32_t) + len;
 
-        if (cachePos_ == cache_.size()) { // Cache fully exhausted
-            cache_.clear(); // Clear empty vector
-            cachePos_ = 0; // Reset cursor to 0
-        } // Closes cache exhaustion check
+//         if (writeCachePos_ + totalBytes > writeCache_.size()) {
+//             writeCache_.clear();
+//             writeCachePos_ = 0;
+//             return {};
+//         }
 
-        if (head_ >= file_.fileSize()) { // All items popped: entire queue is empty!
-            file_.truncate(HEADER_SIZE); // Truncate file immediately back to header (Zero shifting!)
-            head_ = HEADER_SIZE; // Reset head to start after header
-            writeHeadToDisk(true); // Persist reset head to disk
-            cache_.clear(); // Clear cache
-            cachePos_ = 0; // Reset cursor
-        } // Closes empty queue check
+//         size_t start = writeCachePos_ + sizeof(uint32_t);
+//         std::vector<uint8_t> pkt(writeCache_.begin() + start, writeCache_.begin() + start + len);
 
-        return packet; // Return extracted payload
-    } // Closes fast path
+//         writeCachePos_ += totalBytes;
 
-    // Medium path: packet spans across cache chunks but fits in fresh cache
-    if (totalPacketBytes <= CACHE_CAPACITY) { // Fits within fresh buffer
-        refillPopCache(); // Reload buffer starting exactly from head_
-        return Pop(); // Pop from newly aligned cache
-    } // Closes medium packet check
+//         // If writeCache is completely consumed, reset vectors without memory allocations
+//         if (writeCachePos_ >= writeCache_.size()) {
+//             writeCache_.clear();
+//             writeCachePos_ = 0;
 
-    // Oversized packet path: read directly from disk
-    std::vector<uint8_t> packet = file_.readFileBytes(head_ + sizeof(uint32_t), len); // Direct read
-    head_ += totalPacketBytes; // Advance head pointer
-    writeHeadToDisk(false); // Record updated head
-    cache_.clear(); // Invalidate cache
-    cachePos_ = 0; // Reset cursor
+//             // If physical disk had leftover space, truncate now
+//             if (head_ >= diskFileSize_ && diskFileSize_ > HEADER_SIZE) {
+//                 file_.truncate(HEADER_SIZE);
+//                 head_ = HEADER_SIZE;
+//                 diskFileSize_ = HEADER_SIZE;
+//                 writeHeadToDisk(false);
+//             }
+//         }
 
-    if (head_ >= file_.fileSize()) { // All items popped
-        file_.truncate(HEADER_SIZE); // Truncate to header (Zero shifting!)
-        head_ = HEADER_SIZE; // Reset head
-        writeHeadToDisk(true); // Persist reset
-    } // Closes empty queue check
+//         return pkt;
+//     }
 
-    return packet; // Return oversized payload
-} // Closes Pop definition
+//     return {};
+// }
 
-bool FIFO::empty() { // Checks if queue has pending items
-    if (pushMode_) { // In push mode
-        return cache_.empty() && (file_.fileSize() <= HEADER_SIZE); // Check cache and disk length
-    } // Closes pushMode check
+// bool FIFO::empty() {
+//     bool diskEmpty = (head_ >= diskFileSize_);
+//     bool ramEmpty  = (writeCachePos_ >= writeCache_.size());
+//     return (diskEmpty && ramEmpty);
+// }
 
-    // In pop mode: empty if cache is exhausted and head has reached end of file
-    return (cachePos_ >= cache_.size()) && (head_ >= file_.fileSize()); // Evaluates unread content
-} // Closes empty definition
+// bool FIFO::refillReadCache() {
+//     if (head_ >= diskFileSize_) {
+//         readCache_.clear();
+//         readCachePos_ = 0;
+//         return false;
+//     }
 
-void FIFO::maybeCompact() { // Evaluates gap size and only shifts if really necessary
-    size_t sz = file_.fileSize(); // Query physical file size
-    if (head_ >= sz) { // Queue is completely empty
-        file_.truncate(HEADER_SIZE); // Instant wipe down to header (Zero shift wear!)
-        head_ = HEADER_SIZE; // Reset head
-        writeHeadToDisk(true); // Persist reset head
-        return; // Done
-    } // Closes empty check
+//     size_t bytesToRead = std::min(static_cast<size_t>(16 * 1024), static_cast<size_t>(diskFileSize_ - head_));
+//     readCache_ = file_.readFileBytes(head_, bytesToRead);
+//     readCachePos_ = 0;
+//     return !readCache_.empty();
+// }
 
-    size_t deadGap = head_ - HEADER_SIZE; // Calculate wasted dead space at front of file
-    // ONLY shift if dead gap is really big OR file size is too big
-    if (deadGap >= GAP_THRESHOLD || sz >= MAX_FILE_THRESHOLD) { // Threshold evaluation
-        compactDisk(); // Perform flash shift
-    } // Closes threshold check
-} // Closes maybeCompact definition
+// } // namespace file
 
-void FIFO::compactDisk() { // Performs physical flash byte shift
-    size_t sz = file_.fileSize(); // Query file size
-    if (head_ <= HEADER_SIZE || head_ >= sz) return; // Nothing to shift or empty
 
-    size_t shiftDistance = head_ - HEADER_SIZE; // Calculate distance to slide unread region forward
-    ESP_LOGI(TAG, "Compacting FIFO [%s]: shifting %u bytes left", fileName_.c_str(), (unsigned)shiftDistance); // Log compaction
 
-    file_.shiftBytes(shiftDistance, true, head_, sz); // Slide unread region [head_ .. sz] to HEADER_SIZE
-    file_.truncate(sz - shiftDistance); // Truncate duplicate dead bytes from tail
-    head_ = HEADER_SIZE; // Reset head pointer to start immediately after header
-    writeHeadToDisk(true); // Persist updated head to disk
-} // Closes compactDisk definition
 
-bool FIFO::refillPopCache() { // Loads next read-ahead block into cache_
-    size_t sz = file_.fileSize(); // Query total file length
-    if (head_ >= sz) { // Head reached EOF
-        cache_.clear(); // Empty cache
-        cachePos_ = 0; // Reset cursor
-        return false; // Report EOF
-    } // Closes EOF check
 
-    cache_ = file_.readFileBytes(head_, CACHE_CAPACITY); // Read up to CACHE_CAPACITY bytes starting at head_
-    cachePos_ = 0; // Reset cursor to beginning of loaded block
-    return !cache_.empty(); // Return true if data was fetched
-} // Closes refillPopCache definition
 
-} // namespace file // Closes namespace
+
+
+
+
+
+
+
+
+
+
+
+#include "FIFO_file.hpp"
+#include "esp_log.h"
+#include <algorithm>
+#include <cstring>
+
+namespace file {
+
+static const char* TAG = "FIFO";
+
+FIFO::FIFO(std::string fileName, size_t cacheCapacity)
+    : fileName_(std::move(fileName)),
+      file_(fileName_),
+      cacheCapacity_(cacheCapacity),
+      head_(HEADER_SIZE),
+      diskFileSize_(0) {
+    writeCache_.reserve(32 * 1024);
+    readCache_.reserve(16 * 1024);
+
+    initHeader();
+}
+
+FIFO::~FIFO() {
+    flush();
+}
+
+FIFO::FIFO(FIFO&& other) noexcept
+    : fileName_(std::move(other.fileName_)),
+      file_(std::move(other.file_)),
+      cacheCapacity_(other.cacheCapacity_),
+      writeCache_(std::move(other.writeCache_)),
+      writeCachePos_(other.writeCachePos_),
+      readCache_(std::move(other.readCache_)),
+      readCachePos_(other.readCachePos_),
+      head_(other.head_),
+      diskFileSize_(other.diskFileSize_) {
+    other.head_ = HEADER_SIZE;
+    other.diskFileSize_ = 0;
+    other.writeCachePos_ = 0;
+    other.readCachePos_ = 0;
+}
+
+FIFO& FIFO::operator=(FIFO&& other) noexcept {
+    if (this != &other) {
+        flush();
+
+        fileName_ = std::move(other.fileName_);
+        file_ = std::move(other.file_);
+        const_cast<size_t&>(cacheCapacity_) = other.cacheCapacity_;
+        writeCache_ = std::move(other.writeCache_);
+        writeCachePos_ = other.writeCachePos_;
+        readCache_ = std::move(other.readCache_);
+        readCachePos_ = other.readCachePos_;
+        head_ = other.head_;
+        diskFileSize_ = other.diskFileSize_;
+
+        other.head_ = HEADER_SIZE;
+        other.diskFileSize_ = 0;
+        other.writeCachePos_ = 0;
+        other.readCachePos_ = 0;
+    }
+    return *this;
+}
+
+void FIFO::initHeader() {
+    diskFileSize_ = static_cast<uint32_t>(file_.fileSize());
+
+    if (diskFileSize_ >= HEADER_SIZE) {
+        std::vector<uint8_t> hdr = file_.readFileBytes(0, HEADER_SIZE);
+        uint32_t magic = 0;
+        uint32_t loadedHead = 0;
+        std::memcpy(&magic, hdr.data(), sizeof(uint32_t));
+        std::memcpy(&loadedHead, hdr.data() + 4, sizeof(uint32_t));
+
+        if (magic == FIFO_MAGIC) {
+            head_ = loadedHead;
+            if (head_ < HEADER_SIZE || head_ > diskFileSize_) {
+                head_ = HEADER_SIZE;
+                writeHeadToDisk(true);
+            }
+
+            // If head caught up to disk size on boot, reset cleanly
+            if (head_ >= diskFileSize_ && diskFileSize_ > HEADER_SIZE) {
+                file_.truncate(HEADER_SIZE);
+                diskFileSize_ = HEADER_SIZE;
+                head_ = HEADER_SIZE;
+                writeHeadToDisk(true);
+            }
+
+            ESP_LOGI(TAG, "Initialized FIFO [%s], head: %u, diskSize: %u, RAM capacity: %u KB",
+                     fileName_.c_str(), (unsigned)head_, (unsigned)diskFileSize_, (unsigned)(cacheCapacity_ / 1024));
+            return;
+        }
+    }
+
+    // Format new header
+    uint8_t hdr[HEADER_SIZE] = {0};
+    uint32_t magic = FIFO_MAGIC;
+    uint32_t initHead = HEADER_SIZE;
+    std::memcpy(hdr, &magic, sizeof(uint32_t));
+    std::memcpy(hdr + 4, &initHead, sizeof(uint32_t));
+
+    file_.writeFile(std::vector<uint8_t>(hdr, hdr + HEADER_SIZE), 0);
+    file_.flush();
+    head_ = HEADER_SIZE;
+    diskFileSize_ = HEADER_SIZE;
+    ESP_LOGI(TAG, "Formatted new FIFO file [%s]", fileName_.c_str());
+}
+
+void FIFO::writeHeadToDisk(bool forceSync) {
+    uint8_t buf[sizeof(uint32_t)];
+    std::memcpy(buf, &head_, sizeof(uint32_t));
+    file_.writeFile(std::vector<uint8_t>(buf, buf + sizeof(uint32_t)), 4);
+    if (forceSync) {
+        file_.flush();
+    }
+}
+
+void FIFO::commitWriteCacheToDisk() {
+    if (writeCachePos_ < writeCache_.size()) {
+        size_t bytesToWrite = writeCache_.size() - writeCachePos_;
+        std::vector<uint8_t> slice(writeCache_.begin() + writeCachePos_, writeCache_.end());
+        file_.writeFile(slice, -1);
+        diskFileSize_ += static_cast<uint32_t>(bytesToWrite);
+    }
+    writeCache_.clear();
+    writeCachePos_ = 0;
+}
+
+void FIFO::push_back(std::vector<uint8_t> data) {
+    if (data.empty()) return;
+
+    uint32_t len = static_cast<uint32_t>(data.size());
+    size_t packetSize = sizeof(uint32_t) + len;
+
+    // Check if adding this packet exceeds configured RAM limit
+    if ((writeCache_.size() - writeCachePos_) + packetSize > cacheCapacity_) {
+        commitWriteCacheToDisk();
+    }
+
+    // Append to writeCache_: [length (4B)] + [payload]
+    uint8_t lenBuf[sizeof(uint32_t)];
+    std::memcpy(lenBuf, &len, sizeof(uint32_t));
+    writeCache_.insert(writeCache_.end(), lenBuf, lenBuf + sizeof(uint32_t));
+    writeCache_.insert(writeCache_.end(), data.begin(), data.end());
+}
+
+void FIFO::flush() {
+    commitWriteCacheToDisk();
+    writeHeadToDisk(true);
+}
+
+// ----------------------------------------------------------------------------
+// Pop: Fixed Alignment & Buffer Safety
+// ----------------------------------------------------------------------------
+std::vector<uint8_t> FIFO::Pop() {
+    // =========================================================================
+    // CASE 1: Data exists on physical disk (head_ < diskFileSize_)
+    // =========================================================================
+    if (head_ < diskFileSize_) {
+        // Ensure read cache has at least the 4-byte length header
+        if (readCachePos_ + sizeof(uint32_t) > readCache_.size()) {
+            if (!refillReadCache()) {
+                return {};
+            }
+        }
+
+        uint32_t len = 0;
+        std::memcpy(&len, readCache_.data() + readCachePos_, sizeof(uint32_t));
+        size_t totalBytes = sizeof(uint32_t) + len;
+
+        // Path A: The complete packet is within readCache_
+        if (readCachePos_ + totalBytes <= readCache_.size()) {
+            size_t start = readCachePos_ + sizeof(uint32_t);
+            std::vector<uint8_t> pkt(readCache_.begin() + start, readCache_.begin() + start + len);
+
+            readCachePos_ += totalBytes;
+            head_ += totalBytes;
+
+            // Check if disk backlog is completely drained
+            if (head_ >= diskFileSize_) {
+                readCache_.clear();
+                readCachePos_ = 0;
+
+                // Only truncate file if writeCache in RAM is ALSO empty
+                if (writeCachePos_ >= writeCache_.size()) {
+                    file_.truncate(HEADER_SIZE);
+                    head_ = HEADER_SIZE;
+                    diskFileSize_ = HEADER_SIZE;
+                    writeHeadToDisk(false);
+                    writeCache_.clear();
+                    writeCachePos_ = 0;
+                }
+            }
+
+            return pkt;
+        }
+
+        // Path B: Packet crosses the readCache_ boundary!
+        // Instead of blind recursion, read the exact packet directly starting from head_
+        std::vector<uint8_t> directBytes = file_.readFileBytes(head_ + sizeof(uint32_t), len);
+        head_ += totalBytes;
+        
+        // Invalidate read cache so next pop reloads aligned from new head_
+        readCache_.clear();
+        readCachePos_ = 0;
+
+        if (head_ >= diskFileSize_) {
+            if (writeCachePos_ >= writeCache_.size()) {
+                file_.truncate(HEADER_SIZE);
+                head_ = HEADER_SIZE;
+                diskFileSize_ = HEADER_SIZE;
+                writeHeadToDisk(false);
+                writeCache_.clear();
+                writeCachePos_ = 0;
+            }
+        }
+
+        return directBytes;
+    }
+
+    // =========================================================================
+    // CASE 2: Disk is empty. Pop directly from RAM writeCache_!
+    // =========================================================================
+    size_t ramRemaining = writeCache_.size() - writeCachePos_;
+    if (ramRemaining >= sizeof(uint32_t)) {
+        uint32_t len = 0;
+        std::memcpy(&len, writeCache_.data() + writeCachePos_, sizeof(uint32_t));
+        size_t totalBytes = sizeof(uint32_t) + len;
+
+        if (totalBytes <= ramRemaining) {
+            size_t start = writeCachePos_ + sizeof(uint32_t);
+            std::vector<uint8_t> pkt(writeCache_.begin() + start, writeCache_.begin() + start + len);
+
+            writeCachePos_ += totalBytes;
+
+            // If writeCache is completely consumed, clear to reclaim memory
+            if (writeCachePos_ >= writeCache_.size()) {
+                writeCache_.clear();
+                writeCachePos_ = 0;
+
+                if (head_ >= diskFileSize_ && diskFileSize_ > HEADER_SIZE) {
+                    file_.truncate(HEADER_SIZE);
+                    head_ = HEADER_SIZE;
+                    diskFileSize_ = HEADER_SIZE;
+                    writeHeadToDisk(false);
+                }
+            }
+
+            return pkt;
+        }
+    }
+
+    return {};
+}
+
+bool FIFO::empty() {
+    bool diskEmpty = (head_ >= diskFileSize_);
+    bool ramEmpty  = (writeCachePos_ >= writeCache_.size());
+    return (diskEmpty && ramEmpty);
+}
+
+bool FIFO::refillReadCache() {
+    if (head_ >= diskFileSize_) {
+        readCache_.clear();
+        readCachePos_ = 0;
+        return false;
+    }
+
+    size_t bytesToRead = std::min(static_cast<size_t>(16 * 1024), static_cast<size_t>(diskFileSize_ - head_));
+    readCache_ = file_.readFileBytes(head_, bytesToRead);
+    readCachePos_ = 0;
+    return !readCache_.empty();
+}
+
+} // namespace file

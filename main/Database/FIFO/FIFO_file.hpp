@@ -1,85 +1,59 @@
-#pragma once // Prevents double inclusion of this header during compilation
+#pragma once
 
-#include <cstddef>          // Standard size definitions like size_t
-#include <cstdint>          // Standard integer types such as uint8_t and uint32_t
-#include <string>           // Standard string class for file path representations
-#include <vector>           // Standard vector container for packet byte payloads
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
 
-#include "file_manager.hpp" // Level 1 filesystem base helpers
-#include "single_file.hpp"  // Level 2 SingleFile class for persistent file handle operations
+#include "file_manager.hpp"
+#include "single_file.hpp"
 
-namespace file { // Opens dedicated file namespace
+namespace file {
 
-class FIFO { // Implements persistent disk-backed FIFO queue with on-disk head tracking
+class FIFO {
 public:
-    // Binds instance to file, initializes/validates FIFO header, and restores head_ on boot
-    explicit FIFO(std::string fileName); // Constructs FIFO and loads persistent head from disk
+    explicit FIFO(std::string fileName, size_t cacheCapacity = 64 * 1024);
+    ~FIFO();
 
-    // Destructor: flushes pending writes and ensures current head position is persisted
-    ~FIFO(); // Safely closes handle and updates disk header upon destruction
+    // Disable copy
+    FIFO(const FIFO&) = delete;
+    FIFO& operator=(const FIFO&) = delete;
 
-    // Disable copy semantics to prevent two instances manipulating the same underlying file
-    FIFO(const FIFO&) = delete; // Deletes copy constructor
-    FIFO& operator=(const FIFO&) = delete; // Deletes copy assignment operator
+    // Move semantics
+    FIFO(FIFO&& other) noexcept;
+    FIFO& operator=(FIFO&& other) noexcept;
 
-    // Enable move semantics to allow transferring FIFO ownership safely
-    FIFO(FIFO&& other) noexcept; // Move constructor transfers buffers, handle, and offsets
-    FIFO& operator=(FIFO&& other) noexcept; // Move assignment operator transfers ownership
+    // Core APIs
+    void push_back(std::vector<uint8_t> data);
+    std::vector<uint8_t> Pop();
+    void flush();
+    bool empty();
 
-    // ------------------------------------------------------------------------
-    // Mode Switching APIs
-    // ------------------------------------------------------------------------
-
-    // Prepares FIFO for appending packets, checking if dead gap requires compaction
-    void begin_push_mode(); // Switches to write/push mode
-
-    // Commits write cache and primes read-ahead buffer from current head_ position
-    void begin_pop_mode(); // Switches to read/pop mode
-
-    // ------------------------------------------------------------------------
-    // Core Queue APIs
-    // ------------------------------------------------------------------------
-
-    // Enqueues a packet of bytes (buffered in RAM cache until full or flushed)
-    void push_back(std::vector<uint8_t> data); // Appends a byte packet to the FIFO
-
-    // Dequeues the oldest unread packet from the head of the FIFO
-    std::vector<uint8_t> Pop(); // Extracts next packet and advances persistent head_
-
-    // Commits unwritten RAM cache to flash and persists the current head pointer
-    void flush(); // Commits all dirty buffers and header state to disk
-
-    // Checks whether the FIFO contains any unread packets
-    bool empty(); // Returns true if queue has no pending items, false otherwise
+ 
 
 private:
-    std::string fileName_; // Logical relative filename of the FIFO file
-    FileManager::SingleFile file_; // Level 2 persistent file handle managing low-level I/O
+    std::string fileName_;
+    FileManager::SingleFile file_;
+    const size_t cacheCapacity_;
 
-    std::vector<uint8_t> cache_; // In-memory buffer (write buffer in push, read-ahead in pop)
-    size_t cachePos_ = 0; // Current read offset cursor within cache_ during pop mode
-    uint32_t head_ = 0; // Absolute byte offset of the next unread packet in file
+    // In-memory write buffer
+    std::vector<uint8_t> writeCache_;
+    size_t writeCachePos_ = 0; // Read cursor when popping directly from writeCache_
 
-    bool pushMode_ = false; // Flag indicating if push mode is currently active
-    bool popMode_ = false; // Flag indicating if pop mode is currently active
+    // In-memory read buffer (for prefetching from disk)
+    std::vector<uint8_t> readCache_;
+    size_t readCachePos_ = 0;
 
-    // ------------------------------------------------------------------------
-    // On-Disk Layout & Threshold Constants
-    // ------------------------------------------------------------------------
-    static constexpr uint32_t FIFO_MAGIC = 0x4F464946; // Magic bytes "FIFO" in ASCII little-endian
-    static constexpr size_t HEADER_SIZE = 8; // 4 bytes Magic + 4 bytes head pointer = 8 bytes
-    static constexpr size_t CACHE_CAPACITY = 1024; // Maximum in-memory RAM cache capacity (1 KB)
-    static constexpr size_t GAP_THRESHOLD = 4096; // Shift only when dead space exceeds 4 KB
-    static constexpr size_t MAX_FILE_THRESHOLD = 32768; // Shift if total file size exceeds 32 KB
+    uint32_t head_ = 0;         // Disk read offset
+    uint32_t diskFileSize_ = 0; // Physical file size on flash
 
-    // ------------------------------------------------------------------------
-    // Internal Helper Methods
-    // ------------------------------------------------------------------------
-    void initHeader(); // Formats new file or loads existing head_ on boot
-    void writeHeadToDisk(bool forceFlush = false); // Saves head_ to offset 4 of the file
-    void maybeCompact(); // Evaluates gap size and only shifts flash if thresholds are exceeded
-    void compactDisk(); // Performs physical flash byte shift and truncation
-    bool refillPopCache(); // Loads next chunk of data from disk starting at head_
-}; // Closes FIFO class definition
+    static constexpr uint32_t FIFO_MAGIC = 0x4F464946;
+    static constexpr size_t HEADER_SIZE  = 8;
 
-} // namespace file // Closes namespace
+    void initHeader();
+    void writeHeadToDisk(bool forceSync = false);
+    bool refillReadCache();
+    void commitWriteCacheToDisk(); // Spills writeCache_ to disk safely
+};
+
+} // namespace file

@@ -54,6 +54,7 @@ namespace AudioService {
     std::vector<uint8_t> packet = Protocol::Audio::encode_audio(compressed_pcm, now_ms);
     Network::send(packet); 
                 frameCount++;
+                  // ESP_LOGW(TAG, "frameCount = %u",frameCount);
             } else {
                 ESP_LOGW(TAG, "Failed to read audio samples, retrying...");
             }
@@ -80,7 +81,7 @@ namespace AudioService {
         BaseType_t res = xTaskCreatePinnedToCore(
             audio_processing_task,
             "audio_proc_task",
-            16384,                  // 16 KB stack
+            39152,                  //  
             nullptr,
             5,                      // High priority
             &s_audio_task_handle,
