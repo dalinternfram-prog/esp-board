@@ -4,9 +4,6 @@
 #include "esp_log.h"        // ESP-IDF logging framework used for console diagnostic and error logs
 #include "esp_littlefs.h"   // Official LittleFS API for configuration, mounting, and driver stats
 #include "general/io/path.hpp" // Portable path join (general/io/path.hpp)
-#include <unistd.h>    // POSIX standard header containing unlink() used for file deletion
-#include <sys/stat.h>       // POSIX file system status header containing stat() and struct stat
-#include <cerrno>           // Defines errno macro for tracking system-level errors from failed calls
 
 namespace FileManager { // Opens the FileManager namespace implementation block
 
@@ -54,11 +51,6 @@ esp_err_t init(const std::string& base_path, const std::string& partition_label,
     } // Closes mount check block
 
     s_is_mounted = true; // Updates internal flag to indicate filesystem is active and ready
-    size_t total = 0, free = 0; // Stack variables to hold capacity diagnostics
-
-    if (getStorageStats(&total, &free)) { // Attempts to query partition capacity immediately after mount
-        ESP_LOGI(TAG, "Mounted. Total: %u bytes, Free: %u bytes", total, free); // Logs total and free memory on success
-    } // Closes memory reporting check
 
     return ESP_OK; // Returns success code indicating clean initialization
 } // Closes init function definition
@@ -81,41 +73,5 @@ esp_err_t deinit() { // Unmounts and tears down the registered LittleFS instance
 bool isMounted() { // Accessor for checking module state externally
     return s_is_mounted; // Returns boolean flag reflecting active mount status
 } // Closes isMounted function definition
-
-bool exists(const std::string& filename) { // Determines if a file is present on storage
-    std::string path = getFullPath(filename); // Obtains fully qualified VFS path including base mount directory
-    struct stat st; // Creates POSIX stat structure to receive file metadata
-    return (stat(path.c_str(), &st) == 0); // Returns true if stat succeeds (code 0), false if not found or inaccessible
-} // Closes exists function definition
-
-bool deleteFile(const std::string& filename) { // Removes a targeted file from storage
-    std::string path = getFullPath(filename); // Resolves relative filename into full VFS filesystem path
-    if (unlink(path.c_str()) != 0) { // Invokes POSIX unlink syscall; returns 0 on success, -1 on failure
-        ESP_LOGE(TAG, "Failed to delete file '%s' (errno: %d)", path.c_str(), errno); // Logs failure along with errno
-        return false; // Returns false to inform caller that deletion failed
-    } // Closes deletion check block
-    return true; // Returns true indicating successful deletion from flash
-} // Closes deleteFile function definition
-
-bool getStorageStats(size_t* total_bytes, size_t* free_bytes) { // Queries total and available flash partition space
-    if (!s_is_mounted) { // Verifies filesystem is mounted before issuing driver query
-        return false; // Returns failure immediately if the filesystem is currently offline
-    } // Closes mount check block
-
-    size_t total = 0; // Local variable to receive total byte capacity from ESP driver
-    size_t used = 0;  // Local variable to receive used byte count from ESP driver
-
-    if (esp_littlefs_info(s_partition_label.c_str(), &total, &used) == ESP_OK) { // Driver query function to extract metrics
-        if (total_bytes != nullptr) { // Verifies caller provided a valid non-null output pointer for total bytes
-            *total_bytes = total; // Assigns total capacity to output pointer destination
-        } // Closes total_bytes null check
-        if (free_bytes != nullptr) { // Verifies caller provided a valid non-null output pointer for free bytes
-            *free_bytes = (total > used) ? (total - used) : 0; // Calculates free space and guards against underflow
-        } // Closes free_bytes null check
-        return true; // Returns true indicating stats were successfully queried and populated
-    } // Closes driver query evaluation block
-
-    return false; // Returns false if the ESP-IDF driver call failed to fetch stats
-} // Closes getStorageStats function definition
 
 } // namespace FileManager // Closes the FileManager namespace implementation block

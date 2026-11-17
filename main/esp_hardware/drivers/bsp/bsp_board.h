@@ -17,8 +17,6 @@
 extern "C" {
 #endif
 
-#define MAX_FILE_NAME_SIZE 100  // Define maximum file name size
-#define MAX_PATH_SIZE 512      // Define a larger size for the full path
 
 /**
  * @brief ESP32-S3-CAM-OVxxxx I2C GPIO defineation
@@ -195,7 +193,6 @@ esp_err_t esp_audio_get_play_vol(int *volume);
 i2c_master_bus_handle_t esp_ret_i2c_handle(void);
 esp_codec_dev_handle_t esp_ret_play_dev();
 uint32_t Get_SD_Size(void);
-uint16_t Folder_retrieval(const char* directory, const char* fileExtension, char File_Name[][MAX_FILE_NAME_SIZE], uint16_t maxFiles) ;
 
 #ifdef __cplusplus
 }

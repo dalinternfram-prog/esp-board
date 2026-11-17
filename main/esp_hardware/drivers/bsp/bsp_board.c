@@ -16,7 +16,6 @@
 
 #include <sys/unistd.h>
 #include <sys/stat.h>
-#include "dirent.h"
 #include "driver/sdmmc_host.h"
 #include <errno.h>
 //! emily add
@@ -636,54 +635,3 @@ esp_err_t esp_sdcard_deinit(char *mount_point)
 
 #define MOUNT_POINT "/sdcard"
 
-static const char *SD_TAG = "SD";
-
-
-
-uint16_t Folder_retrieval(const char* directory, const char* fileExtension, char File_Name[][MAX_FILE_NAME_SIZE], uint16_t maxFiles)    
-{
-    DIR *dir = opendir(directory);  
-    if (dir == NULL) {
-        ESP_LOGE(SD_TAG, "Path: <%s> does not exist", directory); 
-        return 0;  
-    }
-
-    uint16_t fileCount = 0;  
-    struct dirent *entry;   
-
-    while ((entry = readdir(dir)) != NULL && fileCount < maxFiles) {
-
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        const char *dot = strrchr(entry->d_name, '.');  
-        if (dot != NULL && dot != entry->d_name) { 
-
-            if (strcasecmp(dot, fileExtension) == 0) {  
-                strncpy(File_Name[fileCount], entry->d_name, MAX_FILE_NAME_SIZE - 1);
-                File_Name[fileCount][MAX_FILE_NAME_SIZE - 1] = '\0';  
-
-                char filePath[MAX_PATH_SIZE];
-                snprintf(filePath, MAX_PATH_SIZE, "%s/%s", directory, entry->d_name);
-
-                //printf("File found: %s\r\n", filePath); 
-                fileCount++;  
-            }
-        }
-        else{
-           
-            // printf("No extension found for file: %s\r\n", entry->d_name);
-        }
-    }
-
-    closedir(dir);  
-
-    if (fileCount > 0) {
-        ESP_LOGI(SD_TAG, "Retrieved %d files with extension '%s'", fileCount, fileExtension);  
-    } else {
-        ESP_LOGW(SD_TAG, "No files with extension '%s' found in directory: %s", fileExtension, directory); 
-    }
-
-    return fileCount; 
-}
