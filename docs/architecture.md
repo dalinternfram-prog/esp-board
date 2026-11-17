@@ -27,7 +27,7 @@ main/
     drivers/           bsp, i2s, buttons, led, speech, io expander
     wifi/              WiFi manager / provisioning
     net/kcp/           UDP datagram IO (KCP session is in general/)
-    storage/           NVS, LittleFS, OTA
+    storage/           LittleFS mount + OTA backend
   main.cpp             thin entry: hardware::boot() + start core/app task
 ```
 
@@ -156,8 +156,8 @@ application task.
       button state machine, directory lister, file I/O, formatting, key store,
       session factory, audio frame math).
 - [x] Dead code removed: duplicate protocols, `core/ports.hpp` shim, test blocks.
-- [ ] Delete now-unused hardware leftovers (`storage/nvs`, `single_file` shim,
-      commented WiFi policy, `KcpClient`) once reviewed.
+- [x] Deleted now-unused hardware leftovers (`storage/nvs`, `KcpClient`,
+      duplicate `FileManager` paths, `Folder_retrieval`, commented duplicates).
 - [ ] Next: 4G adapter implementing `ILink`/`ITransport`;
       `IFirmwareUpdater::applyFromUrl()` streaming.
 
