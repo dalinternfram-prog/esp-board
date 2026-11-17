@@ -1,54 +1,70 @@
 # architecture
 
-Ports & Adapters (hexagonal). Dependencies point **inward**: the domain core
-knows nothing about ESP-IDF, FreeRTOS, KCP, WiFi or the board.
-
-```
- main() / Network::init  ──►  app::context()   <- composition root (main/app_context)
-   |
-   +-- application   (audio pipeline, record control, registration)   main/app
-   |
-   +-- domain core   (SessionManager, AudioPipeline)   <- pure C++, unit-testable
-   |        |                                          main/core
-   |        +-- components/proto   (already platform-agnostic)
-   |
-   +-- ports         (ILink ITransport ICrypto IClock IRandom ILogger
-   |                  IDeviceInfo IStorage IFileStore IAudioSource IAudioEncoder)
-   |
-   +-- adapters      (KcpUdpTransport, EspWifiLink, EspClock, ...)     main/adapters
-```
-
-## Folder layout
+Ports & Adapters (hexagonal) with four folders. Dependencies point **inward**:
+the application core knows nothing about ESP-IDF, FreeRTOS, KCP, WiFi or the board.
 
 ```
 main/
-  main.cpp  app_context.{hpp,cpp}   entry point + composition root
-  core/         ports, SessionManager, AudioPipeline   (platform-agnostic)
-  adapters/     ESP implementations of the ports
-  device/       accessor for IDeviceInfo
-  storage/      accessors for IStorage / IFileStore
-  app/          prog.cpp, audio_service, audio arguments
-  codecs/opus/  Opus wrapper
-  drivers/      audio_capture, audio_play, bsp, button, rgb_led, speech, tca9555
-  network/      net_manager, kcp, encryption, wifi
-  database/     fifo, file_manager, nvs, firmware_switch
+  interface.hpp        ports: the contract every layer speaks
+  core/                application + domain (pure C++)
+    app/               prog (registration/dispatch), audio_service, net worker
+    session/           SessionManager (handshake, liveness, reconnect)
+    audio/             AudioPipeline (capture -> encode -> emit)
+    device/ storage/   thin facades over IDeviceInfo / IStorage / IFileStore
+  general/             portable libraries (no core/ or esp_hardware/ deps)
+    kcp/               ikcp
+    crypto/            PSA AES-256-GCM + ECDH P-256
+    opus/              Opus wrapper
+  esp_hardware/        the ONLY folder allowed to touch ESP-IDF
+    hardware.hpp/.cpp  boot() + board bring-up (HARDWARE_HEADER in main.cpp)
+    app_context.*      composition root: concrete adapters + session
+    adapters/          port implementations
+    drivers/           bsp, i2s, buttons, led, speech, io expander
+    wifi/              WiFi manager / provisioning
+    net/kcp/           KCP client + UDP socket
+    storage/           NVS, LittleFS, OTA, AES key store
+  main.cpp             thin entry: hardware::boot() + start core/app task
 ```
 
-## Ports (`main/core/ports.hpp`)
+`main/CMakeLists.txt` adds `main/`, `main/general` and `main/esp_hardware` as
+include roots, so includes use stable prefixes (`interface.hpp`, `core/...`,
+`general/...`, `esp_hardware/...`) regardless of where a file lives.
+
+## Ports (`main/interface.hpp`)
 
 | Port | Responsibility | Today | Tomorrow |
 |---|---|---|---|
-| `ILink` | network path (requires got-IP) | `EspWifiLink` | 4G / Ethernet |
+| `ILink` | start the path + report usable link | `EspWifiLink` | 4G / Ethernet |
 | `ITransport` | move bytes to/from server; own conv id | `KcpUdpTransport` | PPP / TCP |
 | `ICrypto` | ECDH + AES-GCM | `EspCrypto` | other backend |
-| `IClock` | monotonic ms | `esp_timer` | any OS |
+| `IClock` | monotonic ms + unix ms | `esp_timer` / `gettimeofday` | any OS |
 | `IRandom` | session id | `esp_random` | any OS |
-| `ILogger` | logging | `ESP_LOGx` | any OS |
+| `ILogger` | logging (`log` / `logf`) | `ESP_LOGx` | any OS |
 | `IDeviceInfo` | MAC / chip / device id | `EspDeviceInfo` | any board |
 | `IStorage` | small blob key-value | `EspNvsStorage` | any KV store |
-| `IFileStore` | file persistence | `EspFileStore` | any FS |
-| `IAudioSource` | PCM capture | `EspI2sAudioSource` | any mic |
+| `IFileStore` | mount + file persistence | `EspFileStore` | any FS |
+| `IAudioSource` | open/close/read PCM | `EspI2sAudioSource` | any mic |
 | `IAudioEncoder` | audio codec | `OpusEncoder` | LC3 / other |
+| `ITaskRunner` | create/stop/delay/exit tasks | `EspTaskRunner` (FreeRTOS) | `std::thread` / RTOS |
+| `IFirmwareUpdater` | OTA init / apply | `EspFirmwareUpdater` | SD / serial |
+
+## Layer rules (enforced)
+
+`tools/check_layers.sh` (grep gate):
+
+* `core/` never mentions ESP-IDF, FreeRTOS, NVS, WiFi or PSA.
+* `general/` never mentions ESP-IDF, FreeRTOS, NVS or WiFi (PSA/Opus/KCP allowed).
+* `general/` never includes `interface.hpp`, `core/` or `esp_hardware/`.
+
+`tools/host_check.sh` (host compiler):
+
+* `core/audio` + `core/session` compile with `-fsyntax-only` on the host.
+* `general/kcp/ikcp.c` compiles as C99.
+* `general/crypto` and `general/opus` need PSA/libopus headers, so they are
+  validated by the IDF build.
+
+Run both after every change. Run `idf.py reconfigure` after adding a source
+directory (the CMake glob has no `CONFIGURE_DEPENDS`).
 
 ## Domain core (`main/core`)
 
@@ -65,22 +81,39 @@ main/
     (real-time audio: dropping is better than buffering)
 * `audio/AudioPipeline` - capture -> encode -> emit `(compressed, timestampMs)`.
 
-## Adapters (`main/adapters`)
+## Application (`main/core/app`)
 
-* `transport/KcpUdpTransport` - UDP + KCP client.
-* `link/EspWifiLink` - WiFi link (associated + real IP).
-* `crypto/EspCrypto` - wraps `main/network/encryption`.
-* `platform/EspPlatform` - `EspClock`, `EspRandom`, `EspLogger`.
-* `device/EspDeviceInfo` - MAC / chip / device id.
-* `storage/EspNvsStorage` - `IStorage` over NVS.
-* `storage/EspFileStore` - `IFileStore` over LittleFS.
-* `audio/EspI2sAudioSource`, `audio/OpusEncoder` - I2S capture + Opus.
+* `prog.cpp` - device registration + server message dispatch. Uses only
+  `app::context()` ports; no ESP-IDF/FreeRTOS includes.
+* `audio_service.cpp` - start/stop the capture task through `ITaskRunner`;
+  record acks use `IClock::nowUnixMs()`.
+* `net_manager.cpp` - network worker task through `ITaskRunner`; delegates
+  protocol work to `core::SessionManager`.
+
+## Hardware (`main/esp_hardware`)
+
+* `hardware.cpp` - board bring-up: BSP/I2S, IO expander, SD card, playback,
+  buttons, speech engine and music-library scan. `main.cpp` includes it through
+  the `HARDWARE_HEADER` macro.
+* `app_context.*` - composition root; the only place that names concrete
+  adapters and owns the network session.
+* `adapters/` - `KcpUdpTransport`, `EspWifiLink`, `EspCrypto`, `EspClock`,
+  `EspRandom`, `EspLogger`, `EspTaskRunner`, `EspDeviceInfo`,
+  `EspNvsStorage`, `EspFileStore`, `EspFirmwareUpdater`,
+  `EspI2sAudioSource`, `OpusEncoder`.
+* `drivers/`, `wifi/`, `net/kcp/`, `storage/` - the ESP-IDF implementation
+  details behind those adapters.
 
 ## Composition root
 
-`main/app_context.{hpp,cpp}` -> `app::context()` owns every concrete adapter and
-the network session. Modules (`Network`, `device::info()`, `storage::nvs()/files()`)
-delegate to it; no scattered module singletons.
+`main/esp_hardware/app_context.{hpp,cpp}` -> `app::context()` owns every
+concrete adapter and the network session. Modules (`Network`, `device::info()`,
+`storage::nvs()/files()`) delegate to it; no scattered module singletons.
+
+**Swapping hardware** means replacing `main/esp_hardware/` (or pointing
+`HARDWARE_HEADER` at another folder). `main/core/` and `main/general/` stay
+untouched; `main/main.cpp` only calls `hardware::boot()` and starts the
+application task.
 
 ## Migration status
 
@@ -88,15 +121,18 @@ delegate to it; no scattered module singletons.
 - [x] Phase 2: `IDeviceInfo` + handshake gated on got-IP.
 - [x] Phase 3: `IAudioSource` / `IAudioEncoder` + `AudioPipeline`.
 - [x] Phase 4: `IStorage` / `IFileStore` + adapters.
-- [x] Phase 5: `AppContext` composition root.
-- [x] Reorg: `app/`, `drivers/`, `network/`, `database/`, `codecs/`; dead files removed.
+- [x] Phase 5: `AppContext` composition root; `ITaskRunner`; `IFirmwareUpdater`.
+- [x] Four-folder reorg: `interface.hpp` / `core/` / `general/` / `esp_hardware/`.
+- [x] Gates: `tools/check_layers.sh` + `tools/host_check.sh`.
+- [x] Dead code removed: duplicate protocols, `core/ports.hpp` shim, test blocks.
+- [ ] Next: 4G adapter implementing `ILink`/`ITransport`;
+      `IFirmwareUpdater::applyFromUrl()` streaming.
 
 ## Portability snapshot
 
 | Layer | survives an MCU swap |
 |---|---|
 | `components/proto` | 100% |
-| domain core (session, pipeline) | 100% |
-| application logic | ~100% |
-| portable libs (ikcp, crypto math) | ~90% |
-| adapters (WiFi, socket, I2S, NVS, clock) | 0% (isolated, mechanical) |
+| `core/` (session, pipeline, app) | 100% |
+| `general/` (ikcp, crypto, opus) | ~95% (PSA/libopus backends) |
+| `esp_hardware/` (WiFi, socket, I2S, NVS, clock) | 0% (isolated, mechanical) |
