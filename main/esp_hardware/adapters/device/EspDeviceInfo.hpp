@@ -1,13 +1,15 @@
 #pragma once
 
 // Adapter: hardware identity for the ESP-IDF platform (IDeviceInfo port).
+// MAC/chip discovery stays here; string formatting lives in general/util/format.
 
 #include "interface.hpp"
 
 #include "esp_mac.h"
 
-#include <cstdio>
 #include <string>
+
+#include "general/util/format.hpp"
 
 namespace adapters {
 
@@ -18,10 +20,7 @@ public:
         if (esp_read_mac(m, ESP_MAC_WIFI_STA) != ESP_OK) {
             return {};
         }
-        char buf[18];
-        std::snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-                      m[0], m[1], m[2], m[3], m[4], m[5]);
-        return std::string(buf);
+        return general::util::formatMac(m);
     }
 
     std::string chip() const override {
@@ -37,11 +36,9 @@ public:
         if (esp_read_mac(m, ESP_MAC_WIFI_STA) != ESP_OK) {
             return "unknown";
         }
-        char buf[40];
-        std::snprintf(buf, sizeof(buf), "%s-%02X%02X%02X",
-                      chip().c_str(), m[3], m[4], m[5]);
-        return std::string(buf);
+        return general::util::formatDeviceId(chip(), m);
     }
 };
 
 } // namespace adapters
+

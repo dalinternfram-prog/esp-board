@@ -7,22 +7,27 @@ the application core knows nothing about ESP-IDF, FreeRTOS, KCP, WiFi or the boa
 main/
   interface.hpp        ports: the contract every layer speaks
   core/                application + domain (pure C++)
-    app/               prog (registration/dispatch), audio_service, net worker
+    app/               prog, audio_service, net worker, media_controller,
+                       session_factory, aes_key_store
     session/           SessionManager (handshake, liveness, reconnect)
-    audio/             AudioPipeline (capture -> encode -> emit)
+    audio/             AudioPipeline + AudioFormat (frame math)
     device/ storage/   thin facades over IDeviceInfo / IStorage / IFileStore
   general/             portable libraries (no core/ or esp_hardware/ deps)
-    kcp/               ikcp
+    kcp/               ikcp + KcpSession + DatagramIo
     crypto/            PSA AES-256-GCM + ECDH P-256
     opus/              Opus wrapper
+    io/                path join, stdio file store, random-access file
+    fs/                directory lister
+    input/             button debounce / long-press state machine
+    util/              MAC / device-id formatting
   esp_hardware/        the ONLY folder allowed to touch ESP-IDF
     hardware.hpp/.cpp  boot() + board bring-up (HARDWARE_HEADER in main.cpp)
     app_context.*      composition root: concrete adapters + session
-    adapters/          port implementations
+    adapters/          port implementations (incl. media/UI inputs)
     drivers/           bsp, i2s, buttons, led, speech, io expander
     wifi/              WiFi manager / provisioning
-    net/kcp/           KCP client + UDP socket
-    storage/           NVS, LittleFS, OTA, AES key store
+    net/kcp/           UDP datagram IO (KCP session is in general/)
+    storage/           NVS, LittleFS, OTA
   main.cpp             thin entry: hardware::boot() + start core/app task
 ```
 
@@ -47,6 +52,29 @@ include roots, so includes use stable prefixes (`interface.hpp`, `core/...`,
 | `IAudioEncoder` | audio codec | `OpusEncoder` | LC3 / other |
 | `ITaskRunner` | create/stop/delay/exit tasks | `EspTaskRunner` (FreeRTOS) | `std::thread` / RTOS |
 | `IFirmwareUpdater` | OTA init / apply | `EspFirmwareUpdater` | SD / serial |
+| `IMediaPlayer` | play/pause/stop/volume | `EspMediaPlayer` | any player |
+| `IIndicator` | RGB / display status | `EspIndicator` | any UI |
+| `IButtonInput` | physical buttons | `EspButtonInput` | any input |
+| `ISpeechInput` | voice commands | `EspSpeechInput` | any ASR |
+| `IPlaylist` | track listing | `EspSdPlaylist` | any FS |
+
+## General logic rescued from `esp_hardware`
+
+Deleting `main/esp_hardware/` now only removes board glue; these behaviours are
+compiled from `core/` and `general/`:
+
+| Logic | Lives in | Hardware counterpart |
+|---|---|---|
+| KCP session, tuning, reassembly, liveness | `general/kcp/KcpSession` | `net/kcp/EspUdpDatagramIo` |
+| playlist, volume clamp, play/pause, voice feedback | `core/app/MediaController` | `hardware.cpp` + drivers |
+| button debounce / short / long press | `general/input/ButtonStateMachine` | `drivers/button` |
+| directory scan + extension filter | `general/fs/DirectoryLister` | `drivers/bsp` |
+| path join, stdio read/write | `general/io/Path`, `general/io/StdioFileStore` | `adapters/storage/EspFileStore` |
+| random-access file ops (offset/append/shift/truncate) | `general/io/RandomAccessFile` | `storage/file_manager` |
+| MAC / device-id formatting | `general/util/format.hpp` | `adapters/device/EspDeviceInfo` |
+| AES key load + validation | `core/app/aes_key_store.cpp` | `storage/` |
+| session wiring / conv id | `core/app/session_factory` | `app_context.cpp` |
+| audio frame sizing | `core/audio/AudioFormat` | `drivers/audio_capture` |
 
 ## Layer rules (enforced)
 
@@ -124,7 +152,12 @@ application task.
 - [x] Phase 5: `AppContext` composition root; `ITaskRunner`; `IFirmwareUpdater`.
 - [x] Four-folder reorg: `interface.hpp` / `core/` / `general/` / `esp_hardware/`.
 - [x] Gates: `tools/check_layers.sh` + `tools/host_check.sh`.
+- [x] General logic rescued from `esp_hardware/` (KCP session, media controller,
+      button state machine, directory lister, file I/O, formatting, key store,
+      session factory, audio frame math).
 - [x] Dead code removed: duplicate protocols, `core/ports.hpp` shim, test blocks.
+- [ ] Delete now-unused hardware leftovers (`storage/nvs`, `single_file` shim,
+      commented WiFi policy, `KcpClient`) once reviewed.
 - [ ] Next: 4G adapter implementing `ILink`/`ITransport`;
       `IFirmwareUpdater::applyFromUrl()` streaming.
 

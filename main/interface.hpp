@@ -160,4 +160,55 @@ struct IFirmwareUpdater {
     virtual bool applyFromUrl(const std::string& url) = 0;
 };
 
+// Media playback (music player / announcements).
+enum class MediaState { None, Running, Paused, Stopped, Finished, Error };
+
+struct IMediaPlayer {
+    virtual ~IMediaPlayer() = default;
+    virtual bool init() = 0;
+    virtual bool play(const std::string& url) = 0;
+    virtual void stop() = 0;
+    virtual void pause() = 0;
+    virtual void resume() = 0;
+    virtual MediaState state() const = 0;
+    virtual uint8_t volume() const = 0;
+    virtual void setVolume(uint8_t volume) = 0;
+};
+
+// Status indication (RGB LED, display, ...).
+enum class IndicatorMode { Idle, Playing, Recording, VoiceCommand };
+enum class IndicatorColor { Red, Green, Blue, White };
+
+struct IIndicator {
+    virtual ~IIndicator() = default;
+    virtual void setMode(IndicatorMode mode) = 0;
+    virtual void setColor(IndicatorColor color) = 0;
+};
+
+// Physical buttons.
+enum class ButtonId { Previous, PlayPause, Next };
+enum class ButtonEvent { ShortPress, LongPress };
+
+struct IButtonInput {
+    using Handler = void (*)(ButtonId id, ButtonEvent event, void* ctx);
+    virtual ~IButtonInput() = default;
+    virtual bool start(Handler handler, void* ctx) = 0;
+};
+
+// Voice activity / commands.
+enum class SpeechEvent { Awake, Command, CommandTimeout };
+
+struct ISpeechInput {
+    using Handler = void (*)(SpeechEvent event, int command, void* ctx);
+    virtual ~ISpeechInput() = default;
+    virtual bool start(Handler handler, void* ctx) = 0;
+};
+
+// File listing for playback.
+struct IPlaylist {
+    virtual ~IPlaylist() = default;
+    virtual std::vector<std::string> scan(const std::string& directory,
+                                          const std::string& extension) = 0;
+};
+
 } // namespace core

@@ -1,29 +1,28 @@
 #pragma once // Ensures this header file is included only once during compilation
 
-#include "file_manager.hpp" // Imports Level 1 filesystem base utilities (getFullPath, deleteFile)
 #include <string>           // Provides std::string for data and path representation
 #include <vector>           // Provides std::vector for raw binary byte buffers
 #include <cstdint>          // Provides standard integer types such as uint8_t
 #include <cstdio>           // Provides standard C file I/O types (FILE*)
 #include <cstddef>          // Provides standard size types such as size_t
 
-namespace FileManager { // Encloses the class within the FileManager namespace
+namespace general::io { // Encloses the class within the FileManager namespace
 
-class SingleFile { // Dedicated object encapsulating persistent state and I/O for a single file
+class RandomAccessFile { // Dedicated object encapsulating persistent state and I/O for a single file
 public:
-    // Binds this instance to a specific file and automatically opens/prepares it for I/O
-    explicit SingleFile(const std::string& filename); // Caller supplies the filename only once here
+    // Binds this instance to an absolute path and automatically opens/creates it.
+    explicit RandomAccessFile(const std::string& full_path); // Caller supplies the absolute path once here
 
     // Destructor that automatically flushes unwritten data and closes the open descriptor (RAII)
-    ~SingleFile(); // Ensures the file handle is safely closed when the object goes out of scope
+    ~RandomAccessFile(); // Ensures the file handle is safely closed when the object goes out of scope
 
     // Disable copy semantics to prevent two instances from holding and closing the same FILE* handle
-    SingleFile(const SingleFile&) = delete; // Prevents copying of the file instance
-    SingleFile& operator=(const SingleFile&) = delete; // Prevents copy assignment
+    RandomAccessFile(const RandomAccessFile&) = delete; // Prevents copying of the file instance
+    RandomAccessFile& operator=(const RandomAccessFile&) = delete; // Prevents copy assignment
 
     // Enable move semantics to allow transferring file handle ownership between functions/scopes
-    SingleFile(SingleFile&& other) noexcept; // Move constructor transfers pointer and path
-    SingleFile& operator=(SingleFile&& other) noexcept; // Move assignment operator transfers ownership
+    RandomAccessFile(RandomAccessFile&& other) noexcept; // Move constructor transfers pointer and path
+    RandomAccessFile& operator=(RandomAccessFile&& other) noexcept; // Move assignment operator transfers ownership
 
     // ------------------------------------------------------------------------
     // Core APIs
@@ -53,11 +52,10 @@ public:
 
 private:
     FILE* m_file = nullptr; // Persistent standard C file stream handle
-    std::string m_filename; // Relative filename bound to this object
-    std::string m_fullPath; //  
+    std::string m_fullPath; // Absolute path bound to this object
 
     bool openInternal(); // Internal helper to open or create file if not currently open
 
-}; // Closes SingleFile class declaration
+}; // Closes RandomAccessFile class declaration
 
-} // namespace FileManager // Closes namespace
+} // namespace general::io // Closes namespace

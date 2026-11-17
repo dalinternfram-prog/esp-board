@@ -1,19 +1,18 @@
 #pragma once
 
-// Adapter: implements core::ITransport on top of the existing UDP + KCP client.
-// This is the only place that knows about KCP/UDP. A 4G/PPP transport would be
-// a sibling adapter implementing the same port.
+// Adapter: implements core::ITransport on top of the portable KCP session and
+// the ESP UDP datagram channel. KCP logic lives in general/kcp/KcpSession.
 
 #include "interface.hpp"
 
 #include <memory>
 #include <string>
 
-namespace Network {
-class KcpClient;
-}
+#include "general/kcp/kcp_session.hpp"
 
 namespace adapters {
+
+class EspUdpDatagramIo;
 
 class KcpUdpTransport : public core::ITransport {
 public:
@@ -35,7 +34,10 @@ private:
     std::string host_;
     std::string port_;
     uint32_t    conv_id_;
-    std::unique_ptr<Network::KcpClient> kcp_;
+
+    std::unique_ptr<EspUdpDatagramIo>         io_;
+    std::unique_ptr<general::kcp::KcpSession> kcp_;
 };
 
 } // namespace adapters
+

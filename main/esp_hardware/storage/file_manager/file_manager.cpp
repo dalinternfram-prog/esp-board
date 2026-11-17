@@ -3,6 +3,7 @@
 #include "file_manager.hpp" // Includes the Level 1 header declarations to verify prototype compliance
 #include "esp_log.h"        // ESP-IDF logging framework used for console diagnostic and error logs
 #include "esp_littlefs.h"   // Official LittleFS API for configuration, mounting, and driver stats
+#include "general/io/path.hpp" // Portable path join (general/io/path.hpp)
 #include <unistd.h>    // POSIX standard header containing unlink() used for file deletion
 #include <sys/stat.h>       // POSIX file system status header containing stat() and struct stat
 #include <cerrno>           // Defines errno macro for tracking system-level errors from failed calls
@@ -22,13 +23,7 @@ static std::string s_partition_label = "my_files"; // Default label used to loca
 static bool s_is_mounted = false; // Flag set to true upon successful mount and false upon unmount
 
 std::string getFullPath(const std::string& filename) { // Converts any relative filename to its absolute VFS path
-    if (filename.empty()) { // Checks if an empty string argument was passed
-        return s_base_path; // Returns the base mount path directly if no filename was supplied
-    } // Closes empty filename check block
-    if (filename[0] == '/') { // Checks if the caller already provided a leading directory slash
-        return s_base_path + filename; // Concatenates base path directly to the supplied string
-    } // Closes leading slash check block
-    return s_base_path + "/" + filename; // Injects the missing slash separator between base and filename
+    return general::io::join(s_base_path, filename); // Portable path join (general/io/path.hpp)
 } // Closes getFullPath function definition
 
 esp_err_t init(const std::string& base_path, const std::string& partition_label, size_t max_files) { // Mounts LittleFS

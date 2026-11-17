@@ -7,18 +7,24 @@
 #include "driver/i2s_std.h"
 #include "portmacro.h"
 #include "core/app/arguments.hpp" // Directly access project arguments
+#include "core/audio/audio_format.hpp" // Portable frame sizing
 
 static const char* TAG = "AudioCaptureDriver";
 
 namespace Hardware {
 
 AudioCaptureDriver::AudioCaptureDriver() {
-    // Directly pull from macroPhone::argument:: without intermediate wrappers
+    // Frame math lives in core/audio/audio_format.hpp (portable).
     channel_count_ = macroPhone::argument::channel_count;
-    chunk_size_ = (macroPhone::argument::sample_rate * macroPhone::argument::target_frame_duration_ms) / 1000;
+    chunk_size_ = core::audio::samplesPerFrame(
+        macroPhone::argument::sample_rate,
+        macroPhone::argument::target_frame_duration_ms);
 
-    const std::size_t total_samples = chunk_size_ * channel_count_;
-    const std::size_t buffer_bytes = total_samples * (macroPhone::argument::bits_per_chan / 8);
+    const std::size_t buffer_bytes = core::audio::bytesPerFrame(
+        macroPhone::argument::sample_rate,
+        macroPhone::argument::target_frame_duration_ms,
+        macroPhone::argument::channel_count,
+        macroPhone::argument::bits_per_chan);
 
     // Hide PSRAM memory management entirely inside Level 1
     raw_dma_buffer_ = static_cast<int16_t*>(
@@ -71,7 +77,11 @@ esp_err_t AudioCaptureDriver::readSamples() {
     if (raw_dma_buffer_ == nullptr) {
         return ESP_ERR_NO_MEM;
     } 
-    const std::size_t buffer_bytes = chunk_size_ * channel_count_ * (macroPhone::argument::bits_per_chan / 8);
+    const std::size_t buffer_bytes = core::audio::bytesPerFrame(
+        macroPhone::argument::sample_rate,
+        macroPhone::argument::target_frame_duration_ms,
+        macroPhone::argument::channel_count,
+        macroPhone::argument::bits_per_chan);
     size_t bytes_read = 0;
 
     // Use the handle returned when setting up i2s_new_rx_channel()

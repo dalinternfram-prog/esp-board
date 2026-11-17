@@ -9,16 +9,22 @@
 #include <memory>
 
 #include "adapters/audio/EspI2sAudioSource.hpp"
+#include "adapters/audio/EspMediaPlayer.hpp"
 #include "adapters/audio/OpusEncoder.hpp"
 #include "adapters/crypto/EspCrypto.hpp"
 #include "adapters/device/EspDeviceInfo.hpp"
+#include "adapters/input/EspButtonInput.hpp"
+#include "adapters/input/EspSpeechInput.hpp"
 #include "adapters/link/EspWifiLink.hpp"
 #include "adapters/ota/EspFirmwareUpdater.hpp"
 #include "adapters/platform/EspPlatform.hpp"
 #include "adapters/platform/EspTaskRunner.hpp"
 #include "adapters/storage/EspFileStore.hpp"
 #include "adapters/storage/EspNvsStorage.hpp"
+#include "adapters/storage/EspSdPlaylist.hpp"
 #include "adapters/transport/KcpUdpTransport.hpp"
+#include "adapters/ui/EspIndicator.hpp"
+#include "core/app/media_controller.hpp"
 #include "core/session/SessionManager.hpp"
 
 namespace app {
@@ -40,11 +46,20 @@ struct AppContext {
     adapters::EspI2sAudioSource audio_in;
     adapters::OpusEncoder       audio_encoder;
 
+    // Media / UI chain (behaviour is in core/app/MediaController).
+    adapters::EspMediaPlayer media_player;
+    adapters::EspIndicator   indicator;
+    adapters::EspButtonInput buttons;
+    adapters::EspSpeechInput speech;
+    adapters::EspSdPlaylist  playlist;
+    std::unique_ptr<core::app::MediaController> media;
+
     // Network session (built by Network::init).
     std::unique_ptr<adapters::KcpUdpTransport> transport;
     std::unique_ptr<core::SessionManager>      session;
 
     void buildSession(const char* host, const char* port);
+    void startMedia();
 };
 
 // Process-wide composition root (function-local static, built on first use).
