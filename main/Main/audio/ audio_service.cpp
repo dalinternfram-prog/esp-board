@@ -1,144 +1,140 @@
-#include <memory>
+// AudioService: application-layer composition for capture -> encode -> send.
+// Hardware (I2S) and codec (Opus) sit behind core ports; AudioPipeline is
+// platform-agnostic. This file only wires the concrete adapters together.
+
 #include <atomic>
+#include <cstdint>
+#include <memory>
+
+#include <sys/time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-#include "audio_capture_driver.hpp"
-#include "macroPhone/arguments.hpp"
-#include "Opus.hpp"
-#include "Network/Net manager.hpp" // For Network::send
-#include "audio_protocol.hpp"
-#include "turn_on_audio.hpp"
+
+#include "Network/Net manager.hpp"
+
+#include "adapters/audio/EspI2sAudioSource.hpp"
+#include "adapters/audio/OpusEncoder.hpp"
+#include "adapters/platform/EspPlatform.hpp"
+#include "audio_protocol.hpp"      // protocol::IoT::client::encodeAudio
+#include "core/audio/AudioPipeline.hpp"
+#include "turn_on_audio.hpp"       // protocol::IoT::client::encodeRecordAck
+
 namespace AudioService {
 
-    static const char* TAG = "AUDIO_SERVICE";
- 
-    // Task handle & lifecycle control
-    static TaskHandle_t         s_audio_task_handle = nullptr;
-    static std::atomic<bool>    s_should_run{false};
+static const char* TAG = "AUDIO_SERVICE";
 
-    static void audio_processing_task(void* pvParameters) {
-        ESP_LOGI(TAG, "Audio task created & initializing on Core %d", xPortGetCoreID());
+namespace {
 
-        // [CHANGE]: Hardware driver and Opus are instantiated locally on the stack.
-        // When the loop ends upon stop(), their destructors will automatically free
-        // I2S DMA buffers and Opus memory cleanly.
-        auto audioCaptureDriver = std::make_shared<Hardware::AudioCaptureDriver>();
-        auto opus = std::make_shared<Opus>();
+constexpr uint32_t kLoopDelayMs    = 10;
+constexpr uint32_t kTaskStackBytes = 39152;
+constexpr int      kTaskPriority   = 5;
+constexpr int      kTaskCore       = 1;
 
-        opus->init(
-            macroPhone::argument::sample_rate,
-            macroPhone::argument::channel_count,
-            macroPhone::argument::bits_per_chan,
-            macroPhone::argument::target_frame_duration_ms
-        );
+struct AudioContext {
+    TaskHandle_t      task_handle = nullptr;
+    std::atomic<bool> running{false};
+};
 
-        uint32_t frameCount = 0;
+} // namespace
 
-        // Loop runs until stop() sets s_should_run to false
-        while (s_should_run.load()) {
-            // 2. Read new PCM frame from hardware
-            auto ret = audioCaptureDriver->readSamples();
-            if (ret == ESP_OK) {
-                // 3. Get modern C++ std::span pointing to the raw PSRAM data
-                auto raw_pcm = audioCaptureDriver->getFrameBuffer(); 
-                auto compressed_pcm = opus->encode(raw_pcm.data()); 
-// Inside your loop:
-struct timeval tv;
-gettimeofday(&tv, nullptr);
-int64_t now_ms = (static_cast<int64_t>(tv.tv_sec) * 1000ULL) + (tv.tv_usec / 1000ULL);
- 
-// 4. Encode using the new protocol: [Magic | 64-bit Timestamp | Payload]
-                std::vector<uint8_t> packet = protocol::IoT::client::encodeAudio(compressed_pcm, frameCount*20);
- 
-    Network::send(packet); 
-                frameCount++;
-                  // ESP_LOGW(TAG, "frameCount = %u",frameCount);
-            } else {
-                ESP_LOGW(TAG, "Failed to read audio samples, retrying...");
-            }
+static std::unique_ptr<AudioContext> s_ctx;
 
-            vTaskDelay(pdMS_TO_TICKS(10)); // Yield to keep Task Watchdog happy
-        }
-
-        ESP_LOGI(TAG, "Exiting audio loop: cleaning up drivers and deleting task");
-
-        // Explicitly clear pointer and self-delete to release task stack
-        s_audio_task_handle = nullptr;
-        vTaskDelete(NULL);
-    }
-
-    void start() {
-        if (s_audio_task_handle != nullptr) {
-            ESP_LOGW(TAG, "Audio task is already running, ignoring start request");
-            return;
-        }
-
-        s_should_run.store(true);
-
-        // [CHANGE]: Create the task fresh on CPU Core 1
-        BaseType_t res = xTaskCreatePinnedToCore(
-            audio_processing_task,
-            "audio_proc_task",
-            39152,                  //  
-            nullptr,
-            5,                      // High priority
-            &s_audio_task_handle,
-            1                       // Pinned to CPU Core 1
-        );
-
-        if (res == pdPASS) {
-            ESP_LOGI(TAG, "Audio task successfully initialized and started");
-                   // Send success acknowledgment back to server upon successful start
-         struct timeval tv;
-         gettimeofday(&tv, nullptr);
-         int64_t now_ms = (static_cast<int64_t>(tv.tv_sec) * 1000ULL) + (tv.tv_usec / 1000ULL);
-          auto ackPacket = protocol::IoT::client::encodeRecordAck(protocol::IoT::RecordCommand::START, now_ms);
-         Network::send(ackPacket);
-        } else {
-            ESP_LOGE(TAG, "Failed to create audio task!");
-            s_should_run.store(false);
-        }
-    }
-
-    void stop() {
-        if (s_audio_task_handle == nullptr) {
-            ESP_LOGW(TAG, "Audio task already stopped or not initialized");
-            return;
-        }
-
-        ESP_LOGI(TAG, "Stopping audio task...");
-        // Signal task loop to break
-        s_should_run.store(false);
-
-        // Wait briefly (up to 200ms) for the task to exit cleanly and delete itself
-        int timeout_ms = 200;
-        while (s_audio_task_handle != nullptr && timeout_ms > 0) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            timeout_ms -= 10;
-        }
-
-        // Fallback: If task hung inside a blocking driver read, force delete it
-        if (s_audio_task_handle != nullptr) {
-            ESP_LOGW(TAG, "Force deleting audio task after timeout");
-            TaskHandle_t temp_handle = s_audio_task_handle;
-            s_audio_task_handle = nullptr;
-            vTaskDelete(temp_handle);
-        }
-
-        ESP_LOGI(TAG, "Audio task completely stopped and deleted");
-           // Send success acknowledgment back to server upon successful stop
+static int64_t now_ms() {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
-    int64_t now_ms = (static_cast<int64_t>(tv.tv_sec) * 1000ULL) + (tv.tv_usec / 1000ULL);
-    auto ackPacket = protocol::IoT::client::encodeRecordAck(protocol::IoT::RecordCommand::STOP, now_ms);
-    Network::send(ackPacket);
+    return static_cast<int64_t>(tv.tv_sec) * 1000LL + tv.tv_usec / 1000LL;
+}
+
+static void audio_processing_task(void* /*arg*/) {
+    ESP_LOGI(TAG, "Audio task created & initializing on Core %d", xPortGetCoreID());
+
+    adapters::EspI2sAudioSource source;
+    adapters::OpusEncoder       encoder;
+    adapters::EspClock          clock;
+    adapters::EspLogger         logger;
+
+    if (!source.open() || !encoder.init()) {
+        ESP_LOGE(TAG, "Audio pipeline init failed");
+        s_ctx->task_handle = nullptr;
+        vTaskDelete(nullptr);
+        return;
     }
 
-    bool is_running() {
-        return (s_audio_task_handle != nullptr);
+    core::AudioPipeline pipeline(
+        source, encoder, clock, logger,
+        [](const core::Bytes& compressed, uint32_t timestamp_ms) {
+            auto packet = protocol::IoT::client::encodeAudio(compressed, timestamp_ms);
+            Network::send(packet);
+        });
+
+    while (s_ctx->running.load()) {
+        pipeline.step();
+        vTaskDelay(pdMS_TO_TICKS(kLoopDelayMs));
     }
+
+    source.close();
+    ESP_LOGI(TAG, "Exiting audio loop: releasing drivers");
+    s_ctx->task_handle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void start() {
+    if (!s_ctx) {
+        s_ctx = std::make_unique<AudioContext>();
+    }
+    if (s_ctx->task_handle != nullptr) {
+        ESP_LOGW(TAG, "Audio task is already running, ignoring start request");
+        return;
+    }
+
+    s_ctx->running.store(true);
+    BaseType_t res = xTaskCreatePinnedToCore(
+        audio_processing_task, "audio_proc_task", kTaskStackBytes,
+        nullptr, kTaskPriority, &s_ctx->task_handle, kTaskCore);
+
+    if (res == pdPASS) {
+        ESP_LOGI(TAG, "Audio task successfully initialized and started");
+        auto ack = protocol::IoT::client::encodeRecordAck(
+            protocol::IoT::RecordCommand::START, now_ms());
+        Network::send(ack);
+    } else {
+        ESP_LOGE(TAG, "Failed to create audio task!");
+        s_ctx->running.store(false);
+    }
+}
+
+void stop() {
+    if (!s_ctx || s_ctx->task_handle == nullptr) {
+        ESP_LOGW(TAG, "Audio task already stopped or not initialized");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Stopping audio task...");
+    s_ctx->running.store(false);
+
+    int timeout_ms = 200;
+    while (s_ctx->task_handle != nullptr && timeout_ms > 0) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        timeout_ms -= 10;
+    }
+
+    if (s_ctx->task_handle != nullptr) {
+        ESP_LOGW(TAG, "Force deleting audio task after timeout");
+        TaskHandle_t temp = s_ctx->task_handle;
+        s_ctx->task_handle = nullptr;
+        vTaskDelete(temp);
+    }
+
+    ESP_LOGI(TAG, "Audio task completely stopped and deleted");
+    auto ack = protocol::IoT::client::encodeRecordAck(
+        protocol::IoT::RecordCommand::STOP, now_ms());
+    Network::send(ack);
+}
+
+bool is_running() {
+    return s_ctx && s_ctx->task_handle != nullptr;
+}
 
 } // namespace AudioService

@@ -1,0 +1,241 @@
+#include "core/session/SessionManager.hpp"
+
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <utility>
+
+namespace core {
+namespace {
+
+constexpr uint32_t kHandshakeBaseRetryMs = 600;   // first handshake retry delay
+constexpr uint32_t kHandshakeMaxRetryMs  = 3000;  // handshake retry ceiling
+constexpr uint32_t kServerTimeoutMs      = 8000;  // no RX at all => server dead
+constexpr uint32_t kReopenThrottleMs     = 1000;  // retry transport.open() slowly
+constexpr size_t   kMaxOutboundQueue     = 128;   // backpressure threshold
+
+} // namespace
+
+SessionManager::SessionManager(ITransport& transport, ILink& link, IClock& clock,
+                               IRandom& random, ICrypto& crypto, ILogger& logger)
+    : transport_(transport),
+      link_(link),
+      clock_(clock),
+      random_(random),
+      crypto_(crypto),
+      logger_(logger) {}
+
+SessionManager::~SessionManager() { stop(); }
+
+void SessionManager::logf(LogLevel level, const char* fmt, ...) {
+    char buf[192];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    logger_.log(level, buf);
+}
+
+void SessionManager::start() {
+    state_ = State::Idle;
+    aes_key_.clear();
+    handshake_pkt_.clear();
+    retry_count_ = 0;
+    last_attempt_ms_ = 0;
+    last_open_attempt_ms_ = 0;
+
+    {
+        std::lock_guard<std::mutex> lk(tx_mutex_);
+        incoming_.clear();
+        sending_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lk(rx_mutex_);
+        std::queue<Bytes> empty;
+        std::swap(rx_queue_, empty);
+    }
+
+    if (!transport_.open()) {
+        logf(LogLevel::Error, "Transport open failed; will keep retrying");
+    }
+}
+
+void SessionManager::stop() {
+    transport_.close();
+    state_ = State::Idle;
+}
+
+int SessionManager::send(const Bytes& app_message) {
+    if (app_message.empty()) {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lk(tx_mutex_);
+    if (incoming_.size() >= kMaxOutboundQueue) {
+        return -1; // backpressure: caller should drop instead of buffering
+    }
+    incoming_.push_back(app_message);
+    return 0;
+}
+
+std::optional<Bytes> SessionManager::poll() {
+    std::lock_guard<std::mutex> lk(rx_mutex_);
+    if (rx_queue_.empty()) {
+        return std::nullopt;
+    }
+    Bytes out = std::move(rx_queue_.front());
+    rx_queue_.pop();
+    return out;
+}
+
+void SessionManager::tick() {
+    const uint32_t now = clock_.nowMs();
+
+    // 0. Ensure the transport is open (retry, but throttled).
+    if (!transport_.isOpen()) {
+        if (last_open_attempt_ms_ == 0 || (now - last_open_attempt_ms_) >= kReopenThrottleMs) {
+            last_open_attempt_ms_ = now;
+            if (transport_.open()) {
+                logf(LogLevel::Info, "Transport opened");
+            }
+        }
+    }
+    const bool transport_ok = transport_.isOpen();
+
+    if (transport_ok) {
+        // 1. Drive transport timers (retransmissions, acks, ...).
+        transport_.tick(now);
+
+        // 2. Handshake / reconnect state machine.
+        handleHandshake(now);
+
+        // 3. Inbound processing (handshake response or app data).
+        if (auto msg = transport_.receive()) {
+            handleIncoming(std::move(*msg), now);
+        }
+
+        // 4. Server liveness: no datagram at all for kServerTimeoutMs.
+        if (state_ == State::Established) {
+            const uint32_t last_rx = transport_.lastRxMs();
+            if (last_rx != 0 && (now - last_rx) > kServerTimeoutMs) {
+                logf(LogLevel::Warn, "Server silent for %u ms; reconnecting",
+                     static_cast<unsigned>(now - last_rx));
+                resetSession("server timeout");
+            }
+        }
+    }
+
+    // 5. Swap producer buffer into the worker buffer.
+    {
+        std::lock_guard<std::mutex> lk(tx_mutex_);
+        if (!incoming_.empty()) {
+            sending_.swap(incoming_);
+        }
+    }
+
+    // 6. Encrypt & transmit (or drop when offline).
+    if (!sending_.empty()) {
+        const bool online = transport_ok && link_.isUp() && state_ == State::Established;
+        if (online) {
+            for (const auto& pkt : sending_) {
+                auto encrypted = crypto_.encrypt(pkt, aes_key_);
+                if (!encrypted.has_value()) {
+                    logf(LogLevel::Error, "Encrypt failed; dropping packet");
+                    continue;
+                }
+                if (transport_.sendReliable(*encrypted) < 0) {
+                    logf(LogLevel::Warn, "Transport send saturated; dropping packet");
+                }
+            }
+        } else {
+            logf(LogLevel::Warn, "Dropped %u packet(s): session not established",
+                 static_cast<unsigned>(sending_.size()));
+        }
+        sending_.clear();
+    }
+}
+
+void SessionManager::handleHandshake(uint32_t now_ms) {
+    if (!link_.isUp()) {
+        if (state_ != State::Idle) {
+            resetSession("link down");
+        }
+        return;
+    }
+
+    switch (state_) {
+    case State::Idle: {
+        auto pub = crypto_.generatePublicKey();
+        if (!pub.has_value() || pub->empty()) {
+            logf(LogLevel::Error, "ECDH key generation failed");
+            return;
+        }
+        const uint32_t conv = transport_.conversationId();
+        handshake_pkt_.resize(sizeof(uint32_t) + pub->size());
+        std::memcpy(handshake_pkt_.data(), &conv, sizeof(uint32_t));
+        std::memcpy(handshake_pkt_.data() + sizeof(uint32_t), pub->data(), pub->size());
+        transport_.sendRaw(handshake_pkt_);
+        last_attempt_ms_ = now_ms;
+        retry_count_ = 1;
+        state_ = State::WaitAck;
+        logf(LogLevel::Info, "Handshake dispatched (conv=%u)", static_cast<unsigned>(conv));
+        break;
+    }
+    case State::WaitAck: {
+        uint32_t interval = retry_count_ * kHandshakeBaseRetryMs;
+        if (interval > kHandshakeMaxRetryMs) {
+            interval = kHandshakeMaxRetryMs;
+        }
+        if ((now_ms - last_attempt_ms_) >= interval) {
+            retry_count_++;
+            transport_.sendRaw(handshake_pkt_);
+            last_attempt_ms_ = now_ms;
+            logf(LogLevel::Warn, "Handshake ACK timeout; retry #%u",
+                 static_cast<unsigned>(retry_count_));
+        }
+        break;
+    }
+    case State::Established:
+        break; // liveness handled in tick()
+    }
+}
+
+void SessionManager::handleIncoming(Bytes message, uint32_t now_ms) {
+    (void)now_ms;
+    if (state_ == State::WaitAck) {
+        auto secret = crypto_.computeSharedSecret(message);
+        if (secret.has_value() && !secret->empty()) {
+            aes_key_ = std::move(*secret);
+            handshake_pkt_.clear();
+            retry_count_ = 0;
+            state_ = State::Established;
+            logf(LogLevel::Info, "Handshake complete; AES-256-GCM key established");
+        } else {
+            logf(LogLevel::Error, "Corrupt handshake response");
+        }
+        return;
+    }
+    if (state_ == State::Established) {
+        auto decrypted = crypto_.decrypt(message, aes_key_);
+        if (!decrypted.has_value()) {
+            logf(LogLevel::Error, "Failed to decrypt incoming packet");
+            return;
+        }
+        std::lock_guard<std::mutex> lk(rx_mutex_);
+        rx_queue_.push(std::move(*decrypted));
+    }
+}
+
+void SessionManager::resetSession(const char* reason) {
+    logf(LogLevel::Warn, "Session reset (%s)", reason);
+    state_ = State::Idle;
+    aes_key_.clear();
+    handshake_pkt_.clear();
+    retry_count_ = 0;
+    last_attempt_ms_ = 0;
+    // Recreate the transport so the peer sees a clean stream (fresh sequence
+    // numbers). Without this, a restarted server and the client desync.
+    transport_.reset();
+    last_open_attempt_ms_ = clock_.nowMs();
+}
+
+} // namespace core

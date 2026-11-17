@@ -10,6 +10,17 @@
 
 static const char *TAG = "wifi_mgr_net";
 
+// ===== BEGIN factory_01 PATCH =====
+// WIFI_CONNECTED_BIT is only set on IP_EVENT_STA_GOT_IP, so the wait below
+// covers BOTH association and DHCP. Raised from 15000ms to 20000ms to avoid
+// false failures on busy/slow networks (the cause of intermittent "can't connect").
+#define WIFI_MGR_CONNECT_TIMEOUT_MS   20000
+// Delay to let the station fully finish disconnecting before the next attempt,
+// so esp_wifi_connect() starts from a clean state instead of returning
+// ESP_ERR_WIFI_CONN ("already connecting").
+#define WIFI_MGR_DISCONNECT_SETTLE_MS 300
+// ===== END factory_01 PATCH =====
+
 // =============================================================================
 // Connection Logic (runs in task context)
 // =============================================================================
@@ -83,11 +94,29 @@ void wifi_mgr_start_connect_sequence(void)
         esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
 
         for (int retry = 0; retry < g_wifi_mgr->config.max_retry_per_network; retry++) {
+            // ===== BEGIN factory_01 PATCH =====
+            // Force a clean disconnect before every attempt. The original code
+            // re-connected without cleanup; after a timeout the station could
+            // still be associating, so esp_wifi_connect() returned
+            // ESP_ERR_WIFI_CONN and all retries were burned instantly.
+            esp_wifi_disconnect();
+            vTaskDelay(pdMS_TO_TICKS(WIFI_MGR_DISCONNECT_SETTLE_MS));
+            // ===== END factory_01 PATCH =====
+
             xEventGroupClearBits(g_wifi_mgr->event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
 
             esp_err_t err = esp_wifi_connect();
             if (err != ESP_OK) {
                 ESP_LOGW(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
+                // ===== BEGIN factory_01 PATCH =====
+                // Back off before retrying (was an instant "continue", which
+                // spun through all retries in a few ms).
+                if (retry < g_wifi_mgr->config.max_retry_per_network - 1) {
+                    uint32_t delay = calc_backoff_delay(retry);
+                    ESP_LOGI(TAG, "Connect error backoff: %lu ms", (unsigned long)delay);
+                    vTaskDelay(pdMS_TO_TICKS(delay));
+                }
+                // ===== END factory_01 PATCH =====
                 continue;
             }
 
@@ -95,7 +124,7 @@ void wifi_mgr_start_connect_sequence(void)
             EventBits_t bits = xEventGroupWaitBits(g_wifi_mgr->event_group,
                                                    WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                                    pdFALSE, pdFALSE,
-                                                   pdMS_TO_TICKS(15000));
+                                                   pdMS_TO_TICKS(WIFI_MGR_CONNECT_TIMEOUT_MS)); // [factory_01 PATCH] was 15000
 
             if (bits & WIFI_CONNECTED_BIT) {
                 ESP_LOGI(TAG, "Connected to %s", net->ssid);

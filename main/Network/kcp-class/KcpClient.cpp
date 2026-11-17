@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 #include <cstring>
 #include <vector>
 
@@ -94,6 +95,7 @@ std::vector<uint8_t> KcpClient::poll_and_receive() {
 
     ssize_t bytes_received =communicate:: udp_receive(conn_.sock, rx_buffer, sizeof(rx_buffer), &src_addr, &src_addr_len);
     if (bytes_received > 0) {
+        last_rx_ms_ = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);  // [core] liveness
         int err = ikcp_input(kcp_, reinterpret_cast<const char*>(rx_buffer), bytes_received);
         if (err < 0) {
             ESP_LOGW(TAG, "ikcp_input error parsing packet: %d", err);

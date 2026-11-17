@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include "Network/Net manager.hpp"
+#include "device/device_info.hpp"
 
 #include "esp_timer.h"
 #include <iostream>
@@ -44,10 +45,8 @@ add comment to where you change and preserve every comment for future review
 constexpr uint32_t conv_id = 2222222;
 const char* host ="172.30.165.156";
  const char* port="8080";
- const char* ssid="Dalintern device";
-  const char* password= "cykcykcyk";  
    const char* TAG = "app_run_loop";
-   std::string DeviceID = "X";
+   std::string DeviceID = device::info().deviceId();
 void check_filesystem_space() {
     struct statvfs vfs;
     

@@ -323,6 +323,7 @@ private:
     protected:
 
     uint32_t conv_id_ ;
+    uint32_t last_rx_ms_ = 0;   // [core] updated on every received datagram (liveness)
 
    // static int kcp_output_callback(const char* buf, int len, ikcpcb* kcp, void* user);
 
@@ -350,5 +351,6 @@ public:
     // Getters
     int get_socket() const { return conn_.sock; }
     bool is_initialized() const { return kcp_ != nullptr && conn_.is_valid(); }
+    uint32_t lastRxMs() const { return last_rx_ms_; }   // [core] liveness timestamp
 };
 } ;
