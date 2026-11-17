@@ -147,7 +147,7 @@ struct ITaskRunner {
     using TaskId = void*;
     virtual ~ITaskRunner() = default;
     virtual TaskId start(const char* name, uint32_t stack_bytes, int priority, int core,
-                         void (*fn)(void*), void* arg) = 0;
+                         void (*fn)(void*), void* arg) = 0;   // core < 0 = no affinity
     virtual void stop(TaskId task) = 0;    // force-terminate
     virtual void delayMs(uint32_t ms) = 0;
     virtual void exitCurrentTask() = 0;    // must be called by fn() before it returns

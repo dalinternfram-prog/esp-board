@@ -14,7 +14,11 @@ public:
     TaskId start(const char* name, uint32_t stack_bytes, int priority, int core,
                  void (*fn)(void*), void* arg) override {
         TaskHandle_t handle = nullptr;
-        if (xTaskCreatePinnedToCore(fn, name, stack_bytes, arg, priority, &handle, core) != pdPASS) {
+        const BaseType_t created =
+            (core < 0)
+                ? xTaskCreate(fn, name, stack_bytes, arg, priority, &handle)
+                : xTaskCreatePinnedToCore(fn, name, stack_bytes, arg, priority, &handle, core);
+        if (created != pdPASS) {
             return nullptr;
         }
         return static_cast<TaskId>(handle);

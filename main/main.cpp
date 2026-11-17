@@ -13,7 +13,7 @@
 extern "C" void app_main() {
     hardware::boot();
 
-    if (app::context().tasks.start("app_run_loop_task", 9152, 5, 1,
+    if (app::context().tasks.start("app_run_loop_task", 9152, 5, -1,
                                    app_run_loop, nullptr) == nullptr) {
         app::context().logger.logf(core::LogLevel::Error,
                                    "Failed to start the application task");
