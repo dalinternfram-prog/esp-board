@@ -57,8 +57,11 @@ any --link down--> IDLE (reset transport)
       `Network::` API preserved as a thin composition root.
 - [x] Phase 2: `IDeviceInfo` (MAC/chip/deviceId) + handshake gated on got-IP.
 - [x] Phase 3: `IAudioSource` / `IAudioEncoder` + `AudioPipeline`.
-- [ ] Phase 4: `IStorage` / `IFileStore`.
-- [ ] Phase 5: `AppContext` returned by `main`, remove last module globals.
+- [x] Phase 4: `IStorage` / `IFileStore` + `EspNvsStorage` / `EspFileStore`.
+* `main/adapters/storage/EspNvsStorage` - `IStorage` over ESP-IDF NVS.
+* `main/adapters/storage/EspFileStore` - `IFileStore` over LittleFS.
+* `main/storage/storage` - `storage::nvs()` / `storage::files()` accessors.
+- [x] Phase 5: single `AppContext` composition root (`app::context()`).
 
 ## Portability snapshot
 

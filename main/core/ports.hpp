@@ -66,6 +66,25 @@ struct IAudioEncoder {
     virtual uint32_t frameDurationMs() const = 0;
 };
 
+// Persistence: small blobs (keys, credentials, counters). NVS today, any
+// other key-value store tomorrow.
+struct IStorage {
+    virtual ~IStorage() = default;
+    virtual bool set(const std::string& key, const Bytes& value) = 0;
+    virtual bool get(const std::string& key, Bytes& out) = 0;
+    virtual bool remove(const std::string& key) = 0;
+    virtual bool exists(const std::string& key) = 0;
+};
+
+// File persistence (recordings, offline queues, ...). LittleFS today.
+struct IFileStore {
+    virtual ~IFileStore() = default;
+    virtual bool exists(const std::string& path) = 0;
+    virtual bool remove(const std::string& path) = 0;
+    virtual bool readAll(const std::string& path, Bytes& out) = 0;
+    virtual bool writeAll(const std::string& path, const Bytes& data) = 0;
+};
+
 // Byte transport to the server. Owns the conversation id (used by the
 // handshake packet) and hides whether it is UDP+KCP, PPP, TCP, ...
 struct ITransport {

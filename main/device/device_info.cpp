@@ -1,13 +1,9 @@
 #include "device/device_info.hpp"
 
-#include "adapters/device/EspDeviceInfo.hpp"
+#include "app_context.hpp"
 
 namespace device {
 
-core::IDeviceInfo& info() {
-    // Read-only singleton; function-local static => safe one-time init.
-    static adapters::EspDeviceInfo instance;
-    return instance;
-}
+core::IDeviceInfo& info() { return app::context().device; }
 
 } // namespace device
