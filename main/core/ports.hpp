@@ -4,8 +4,10 @@
 // IMPORTANT: no ESP-IDF / FreeRTOS / KCP / WiFi headers may be included here.
 // Implementations live in main/adapters/* and are wired in the composition root.
 
+#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,12 +22,23 @@ enum class LogLevel { Info, Warn, Error };
 struct ILogger {
     virtual ~ILogger() = default;
     virtual void log(LogLevel level, const char* msg) = 0;
+
+    // Convenience printf-style helper (non-virtual). Adapters implement log().
+    void logf(LogLevel level, const char* fmt, ...) {
+        char buf[256];
+        va_list ap;
+        va_start(ap, fmt);
+        std::vsnprintf(buf, sizeof(buf), fmt, ap);
+        va_end(ap);
+        log(level, buf);
+    }
 };
 
 // Monotonic millisecond clock.
 struct IClock {
     virtual ~IClock() = default;
     virtual uint32_t nowMs() const = 0;
+    virtual int64_t  nowUnixMs() const = 0;
 };
 
 // Randomness source (used for the KCP conversation id).
@@ -38,7 +51,8 @@ struct IRandom {
 // WiFi today; 4G / Ethernet tomorrow without touching the core.
 struct ILink {
     virtual ~ILink() = default;
-    virtual bool isUp() const = 0;
+    virtual bool start() = 0;       // begin provisioning/connect (WiFi portal, PPP dial)
+    virtual bool isUp() const = 0;  // usable path (associated + IP)
 };
 
 // Hardware identity, sealed away from the application: the app never calls
@@ -79,6 +93,7 @@ struct IStorage {
 // File persistence (recordings, offline queues, ...). LittleFS today.
 struct IFileStore {
     virtual ~IFileStore() = default;
+    virtual bool init() = 0;   // mount / prepare the backing store
     virtual bool exists(const std::string& path) = 0;
     virtual bool remove(const std::string& path) = 0;
     virtual bool readAll(const std::string& path, Bytes& out) = 0;
@@ -124,6 +139,24 @@ struct ICrypto {
     virtual std::optional<Bytes> computeSharedSecret(const Bytes& peer_public_key) = 0;
     virtual std::optional<Bytes> encrypt(const Bytes& plaintext, const Bytes& key) = 0;
     virtual std::optional<Bytes> decrypt(const Bytes& packet, const Bytes& key) = 0;
+};
+
+// Task/thread creation (FreeRTOS today; std::thread or another RTOS elsewhere).
+struct ITaskRunner {
+    using TaskId = void*;
+    virtual ~ITaskRunner() = default;
+    virtual TaskId start(const char* name, uint32_t stack_bytes, int priority, int core,
+                         void (*fn)(void*), void* arg) = 0;
+    virtual void stop(TaskId task) = 0;    // force-terminate
+    virtual void delayMs(uint32_t ms) = 0;
+    virtual void exitCurrentTask() = 0;    // must be called by fn() before it returns
+};
+
+// Firmware update (OTA / SD card / serial, ...).
+struct IFirmwareUpdater {
+    virtual ~IFirmwareUpdater() = default;
+    virtual bool init() = 0;
+    virtual bool applyFromUrl(const std::string& url) = 0;
 };
 
 } // namespace core

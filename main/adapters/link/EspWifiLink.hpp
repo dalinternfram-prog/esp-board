@@ -11,11 +11,17 @@
 
 #include "esp_timer.h"
 #include "WiFiManager.hpp"
+#include "wifi/shared.hpp"
 
 namespace adapters {
 
 class EspWifiLink : public core::ILink {
 public:
+    bool start() override {
+        wifi::init();
+        return true;
+    }
+
     bool isUp() const override {
         // wifi_manager_get_status() is not free; cache the answer briefly.
         const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);

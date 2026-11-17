@@ -6,7 +6,7 @@
 #include "bsp_board.h" // Hardware BSP layer
 #include "driver/i2s_std.h"
 #include "portmacro.h"
-#include "macroPhone/arguments.hpp" // Directly access project arguments
+#include "app/arguments.hpp" // Directly access project arguments
 
 static const char* TAG = "AudioCaptureDriver";
 

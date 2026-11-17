@@ -8,10 +8,14 @@
 
 #include <memory>
 
+#include "adapters/audio/EspI2sAudioSource.hpp"
+#include "adapters/audio/OpusEncoder.hpp"
 #include "adapters/crypto/EspCrypto.hpp"
 #include "adapters/device/EspDeviceInfo.hpp"
 #include "adapters/link/EspWifiLink.hpp"
+#include "adapters/ota/EspFirmwareUpdater.hpp"
 #include "adapters/platform/EspPlatform.hpp"
+#include "adapters/platform/EspTaskRunner.hpp"
 #include "adapters/storage/EspFileStore.hpp"
 #include "adapters/storage/EspNvsStorage.hpp"
 #include "adapters/transport/KcpUdpTransport.hpp"
@@ -29,6 +33,12 @@ struct AppContext {
     adapters::EspNvsStorage storage{"storage"};
     adapters::EspFileStore  files;
     adapters::EspWifiLink   link;
+    adapters::EspTaskRunner tasks;
+    adapters::EspFirmwareUpdater firmware;
+
+    // Audio chain (hardware is only touched on open() / init()).
+    adapters::EspI2sAudioSource audio_in;
+    adapters::OpusEncoder       audio_encoder;
 
     // Network session (built by Network::init).
     std::unique_ptr<adapters::KcpUdpTransport> transport;

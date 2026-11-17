@@ -14,6 +14,8 @@ namespace adapters {
 
 class EspFileStore : public core::IFileStore {
 public:
+    bool init() override { return FileManager::init() == ESP_OK; }
+
     bool exists(const std::string& path) override {
         return FileManager::exists(path);
     }

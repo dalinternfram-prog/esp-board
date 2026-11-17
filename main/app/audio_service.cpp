@@ -12,7 +12,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-#include "Network/Net manager.hpp"
+#include "network/net_manager.hpp"
 
 #include "adapters/audio/EspI2sAudioSource.hpp"
 #include "adapters/audio/OpusEncoder.hpp"

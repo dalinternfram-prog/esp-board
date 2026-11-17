@@ -1,5 +1,4 @@
 #pragma once 
-#include "wifi/shared.hpp"
 
 #include "esp_wifi_manager.h"
 #include "WiFiManager.hpp"

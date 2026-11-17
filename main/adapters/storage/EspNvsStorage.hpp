@@ -15,7 +15,15 @@ namespace adapters {
 class EspNvsStorage : public core::IStorage {
 public:
     explicit EspNvsStorage(std::string namespace_name)
-        : namespace_(std::move(namespace_name)) {}
+        : namespace_(std::move(namespace_name)) {
+        // Idempotent: safe when the WiFi manager (or anyone else) initialized NVS
+        // first. Handles the two states that require a full erase.
+        esp_err_t err = nvs_flash_init();
+        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+            nvs_flash_erase();
+            nvs_flash_init();
+        }
+    }
 
     bool set(const std::string& key, const core::Bytes& value) override {
         nvs_handle_t h;

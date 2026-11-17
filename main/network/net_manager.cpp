@@ -1,7 +1,7 @@
 // Network module: worker task + delegation to the AppContext session.
 // Protocol logic lives in core::SessionManager; adapters live in AppContext.
 
-#include "Net manager.hpp"
+#include "network/net_manager.hpp"
 
 #include <atomic>
 #include <memory>

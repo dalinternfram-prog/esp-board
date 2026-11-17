@@ -4,6 +4,8 @@
 
 #include "core/ports.hpp"
 
+#include <sys/time.h>
+
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -14,6 +16,12 @@ class EspClock : public core::IClock {
 public:
     uint32_t nowMs() const override {
         return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+    }
+
+    int64_t nowUnixMs() const override {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        return static_cast<int64_t>(tv.tv_sec) * 1000LL + tv.tv_usec / 1000LL;
     }
 };
 
@@ -34,3 +42,4 @@ public:
 };
 
 } // namespace adapters
+
