@@ -1,5 +1,3 @@
-#include "protocol/client/audio/audio_protocol.hpp"
-
 #include <memory>
 #include <atomic>
 
@@ -11,11 +9,12 @@
 #include "macroPhone/arguments.hpp"
 #include "Opus.hpp"
 #include "Network/Net manager.hpp" // For Network::send
-
+#include "audio_protocol.hpp"
+#include "turn_on_audio.hpp"
 namespace AudioService {
 
     static const char* TAG = "AUDIO_SERVICE";
-
+ 
     // Task handle & lifecycle control
     static TaskHandle_t         s_audio_task_handle = nullptr;
     static std::atomic<bool>    s_should_run{false};
@@ -46,12 +45,14 @@ namespace AudioService {
                 // 3. Get modern C++ std::span pointing to the raw PSRAM data
                 auto raw_pcm = audioCaptureDriver->getFrameBuffer(); 
                 auto compressed_pcm = opus->encode(raw_pcm.data()); 
-
-    // 1. Capture timestamp in milliseconds
-    uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-
-    // 2. Encode into audio protocol packet [0xA3 | timestamp | length | Opus data]
-    std::vector<uint8_t> packet = Protocol::Audio::encode_audio(compressed_pcm, now_ms);
+// Inside your loop:
+struct timeval tv;
+gettimeofday(&tv, nullptr);
+int64_t now_ms = (static_cast<int64_t>(tv.tv_sec) * 1000ULL) + (tv.tv_usec / 1000ULL);
+ 
+// 4. Encode using the new protocol: [Magic | 64-bit Timestamp | Payload]
+                std::vector<uint8_t> packet = protocol::IoT::client::encodeAudio(compressed_pcm, frameCount*20);
+ 
     Network::send(packet); 
                 frameCount++;
                   // ESP_LOGW(TAG, "frameCount = %u",frameCount);
@@ -90,6 +91,12 @@ namespace AudioService {
 
         if (res == pdPASS) {
             ESP_LOGI(TAG, "Audio task successfully initialized and started");
+                   // Send success acknowledgment back to server upon successful start
+         struct timeval tv;
+         gettimeofday(&tv, nullptr);
+         int64_t now_ms = (static_cast<int64_t>(tv.tv_sec) * 1000ULL) + (tv.tv_usec / 1000ULL);
+          auto ackPacket = protocol::IoT::client::encodeRecordAck(protocol::IoT::RecordCommand::START, now_ms);
+         Network::send(ackPacket);
         } else {
             ESP_LOGE(TAG, "Failed to create audio task!");
             s_should_run.store(false);
@@ -122,6 +129,12 @@ namespace AudioService {
         }
 
         ESP_LOGI(TAG, "Audio task completely stopped and deleted");
+           // Send success acknowledgment back to server upon successful stop
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    int64_t now_ms = (static_cast<int64_t>(tv.tv_sec) * 1000ULL) + (tv.tv_usec / 1000ULL);
+    auto ackPacket = protocol::IoT::client::encodeRecordAck(protocol::IoT::RecordCommand::STOP, now_ms);
+    Network::send(ackPacket);
     }
 
     bool is_running() {

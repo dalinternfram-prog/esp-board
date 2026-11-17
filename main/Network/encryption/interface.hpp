@@ -86,6 +86,8 @@ bool aes_gcm_decrypt(const uint8_t key[AES_KEY_BYTES],
 
 
 
+std::optional<std::vector<uint8_t>> aes_gcm_decrypt(const std::vector<uint8_t>& packet,std::vector<uint8_t>aes_key);
+
 
 
 

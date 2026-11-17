@@ -14,7 +14,6 @@
 #include <chrono>
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "protocol/client/wifi/wifi_got_ip_protocol.hpp"
 #include "wifi/shared.hpp"
 #include "esp_mac.h"
 #include "esp_wifi.h"
@@ -37,20 +36,14 @@ inline void on_wifi_got_ip(const char *event, const void *data, size_t len, void
     // Retrieve the full current status object from the wifi manager library
     wifi_status_t status;
     if (wifi_manager_get_status(&status) == ESP_OK) {
-        // 1. Populate the cross-platform struct
-        Protocol::Wifi::GotIpInfo info;
- info.ip      = status.ip;
-info.gateway = status.gateway;
-info.netmask = status.netmask;
-info.dns     = status.dns;
-info.mac     = status.mac;
-        info.quality = status.quality;
+        // Log IP details. No protocol::IoT "got_ip" message exists yet, so we
+        // intentionally do NOT emit a non-conforming packet here.
+        ESP_LOGI(TAG, "WiFi got IP: ip=%s gateway=%s netmask=%s dns=%s mac=%s quality=%u",
+                 status.ip, status.gateway, status.netmask, status.dns, status.mac,
+                 static_cast<unsigned>(status.quality));
 
-        // 2. Encode to raw bytes
-        std::vector<uint8_t> payload = Protocol::Wifi::encode_got_ip(info);
-
-        // 3. Dispatch via your thread-safe Network model
-        Network::send(payload);
+        // TODO(proto): once components/proto defines the "got_ip" message,
+        // encode via protocol::IoT::client::encode...(...) and Network::send(...).
 
     } else {
         ESP_LOGW(TAG, "Failed to retrieve full WiFi status during got_ip event");

@@ -29,6 +29,7 @@ idf_component_register(
         esp_wifi_manager
         esp_bus  
         opus
+        proto
 )
 
 

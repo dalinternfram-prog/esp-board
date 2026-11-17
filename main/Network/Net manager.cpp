@@ -131,50 +131,18 @@ int send(const std::vector<uint8_t>& data) {
         return 0;
     }
 
-    std::lock_guard<std::mutex> lock(s_tx_mutex);
-
-    // --- Performance Tracking State ---
-    static int64_t  s_last_report_us = 0;
-    static uint32_t s_window_sent    = 0;
-    static uint32_t s_window_dropped = 0;
-    static size_t   s_window_bytes   = 0;
-
-    int64_t now_us = esp_timer_get_time();
-    if (s_last_report_us == 0) {
-        s_last_report_us = now_us;
-    }
-
+    std::lock_guard<std::mutex> lock(s_tx_mutex); 
     // 1. Backpressure Check
     if (s_incoming_queue.size() >= MAX_RAM_QUEUE_SIZE) {
-        s_window_dropped++;
+        
         ESP_LOGW(TAG, "Outgoing RAM queue full; message rejected (Backpressure)");
         return -1;
-    }
-
+    } 
     // 2. Queue the Packet
     s_incoming_queue.push_back(data);
-    s_window_sent++;
-    s_window_bytes += data.size();
+ 
 
-    // 3. Periodic 1-Second Send Frequency Report
-    int64_t elapsed_us = now_us - s_last_report_us;
-    if (elapsed_us >= 1000000ULL) {
-        float elapsed_sec = elapsed_us / 1000000.0f;
-        float pps = s_window_sent / elapsed_sec;
-        float kb_per_sec = (s_window_bytes / 1024.0f) / elapsed_sec;
 
-        ESP_LOGI(TAG, "[TX STATS 1s] Rate: %.1f pkts/s | Bandwidth: %.2f KB/s | Dropped: %u | Queue Depth: %u",
-                 pps,
-                 kb_per_sec,
-                 s_window_dropped,
-                 static_cast<unsigned>(s_incoming_queue.size()));
-
-        // Reset counters for the next 1-second window
-        s_window_sent    = 0;
-        s_window_dropped = 0;
-        s_window_bytes   = 0;
-        s_last_report_us = now_us;
-    }
 
     return 0;
 }
@@ -294,7 +262,7 @@ static void network_worker_task(void* /*pvParameters*/) {
                         }
                     } else if (s_hs_state == HandshakeState::ESTABLISHED) {
                         int64_t t_crypto = esp_timer_get_time();
-                        auto decrypted = encryption::aes_gcm_decrypt(incoming_data);
+                        auto decrypted = encryption::aes_gcm_decrypt(incoming_data,s_aes_key);
                         stat_crypto_time_us += (esp_timer_get_time() - t_crypto);
 
                         if (decrypted.has_value()) {

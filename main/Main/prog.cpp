@@ -26,7 +26,8 @@
 // [CHANGE]: Included FreeRTOS headers explicitly for xTaskCreatePinnedToCore
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "protocol/server/audio/turn_on_audio.hpp"
+#include "turn_on_audio.hpp"
+#include "IoT_identity_token.hpp"
 /*
 add comment to where you change and preserve every comment for future review
 */
@@ -36,7 +37,7 @@ const char* host ="172.30.165.156";
  const char* ssid="Dalintern device";
   const char* password= "cykcykcyk";  
    const char* TAG = "app_run_loop";
-   using namespace Protocol;
+   std::string DeviceID = "88990011@@";
 void check_filesystem_space() {
     struct statvfs vfs;
     
@@ -73,7 +74,15 @@ check_filesystem_space();
     FileManager::init();
     wifi::init();
     Network::init(host,port);
-AudioService::start();
+
+
+// 2. Encode the device query packet using your new protocol
+    std::vector<uint8_t> registration_packet = protocol::IoT::client::encodeDeviceQuery(DeviceID);
+    // 3. Send the packet to the server over your network connection
+    Network::send(registration_packet);
+
+    ESP_LOGI("SERVER", "Sent device registration query for ID: %s", DeviceID.c_str());
+    AudioService::start();
 
 
 
@@ -84,34 +93,58 @@ AudioService::start();
 
 
     while (true) {
-
+  Network::send(registration_packet);
 //TODO:we need to pull server information;
 
  std::vector<uint8_t>pulled_result =  Network::poll_and_receive();
 if(pulled_result.size()>0){
     
-    
-    
-if( RecordControl::Client::is_record_control(pulled_result)){
- auto result =   RecordControl::Client:: decode(pulled_result);
-if(result.has_value()){
-    if(result.value().command == RecordControl::RecordCommand::START){
-        //TODO turn on the audio;
-        if(! AudioService::is_running()){
-            AudioService::start();
+
+ // Check if the incoming packet matches the RecordControlInfo protocol magic & structure
+        if (protocol::IoT::client::isRecordControl(pulled_result)) {
+            protocol::IoT::RecordControlInfo info;
+            
+            if (protocol::IoT::client::decodeRecordControl(pulled_result, info)) {
+                
+                if (info.command == protocol::IoT::RecordCommand::START) {
+                    // Turn on audio recording if it isn't already running
+                    if (!AudioService::is_running()) {
+                        AudioService::start();
+                        ESP_LOGI("Server", "Audio service started via server command (Timestamp: %u)", info.timestampMs);
+                    }
+                } 
+                else if (info.command == protocol::IoT::RecordCommand::STOP) {
+                    // Stop audio recording if it is active
+                    if (AudioService::is_running()) {
+                        AudioService::stop();
+                        ESP_LOGI("Server", "Audio service stopped via server command.");
+                    }
+                }
+            } else {
+                ESP_LOGW("Server", "Failed to decode valid RecordControl payload.");
+            }
         }
-    }
-    else{
-           if( AudioService::is_running()){
-            AudioService::stop();
+        // 2. Handle Device Query Response (Server acknowledging/replying to device query)
+        else if (protocol::IoT::client::isDeviceQueryResponse(pulled_result)) {
+            protocol::IoT::BuisDeviceQueryResponse queryRes;
+            
+            if (protocol::IoT::client::decodeDeviceQueryResponse(pulled_result, queryRes)) {
+                if (queryRes.status == protocol::IoT::Status_DeviceQuery::SUCCESS) {
+                    ESP_LOGI("Server", "Device query acknowledged successfully. Message: %s", queryRes.message.c_str());
+                } else {
+                    ESP_LOGW("Server", "Device query rejected by server. Status code: %u, Message: %s", 
+                             static_cast<uint8_t>(queryRes.status), queryRes.message.c_str());
+                }
+            } else {
+                ESP_LOGW("Server", "Failed to decode BuisDeviceQueryResponse payload.");
+            }
         }
-    }
-}
-}
- 
+        
+        else {
+            // Handle other incoming packet types or general server notifications here if needed
+            ESP_LOGI("Server", "Received general server message or unhandled packet type.");
+        }
   
-
-
 
     //TODO: handle the result;
 

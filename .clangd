@@ -37,6 +37,7 @@ CompileFlags:
     - --target=xtensa-esp32s3-unknown-elf
     - -mlongcalls
     - -mdisable-hardware-atomics
+    - -mtext-section-literals
     - -fno-shrink-wrap
     - -fstrict-volatile-bitfields
     - -fno-tree-switch-conversion
@@ -46,10 +47,14 @@ CompileFlags:
     - -m*
   Add:
     - --target=x86_64-unknown-linux-gnu
+    - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/xtensa-esp-elf/include/c++/15.2.0
+    - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/xtensa-esp-elf/include/c++/15.2.0/xtensa-esp-elf/esp32s3
+    - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/xtensa-esp-elf/include/c++/15.2.0/backward
+    - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/lib/gcc/xtensa-esp-elf/15.2.0/include
+    - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/lib/gcc/xtensa-esp-elf/15.2.0/include-fixed
     - -isystem/home/emily/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/xtensa-esp-elf/include
-    # Adds explicit inclusion for xtensa target headers:
-    - -I/home/emily/.espressif/v6.1/esp-idf/components/xtensa/include
-    - -I/home/emily/.espressif/v6.1/esp-idf/components/xtensa/xtensa32s3/include
 
 Diagnostics:
   UnusedIncludes: None
+  Suppress:
+    - invalid_consteval_call

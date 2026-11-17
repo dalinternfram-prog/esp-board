@@ -119,4 +119,60 @@ std::optional<std::vector<uint8_t>> aes_gcm_decrypt(
 
     return plaintext_out;
 }
+
+
+
+
+std::optional<std::vector<uint8_t>> aes_gcm_decrypt(const std::vector<uint8_t>& packet,std::vector<uint8_t>key){
+ 
+
+   
+    // Validate key size
+    if (key.size() != AES_KEY_BYTES) {
+        ESP_LOGE(TAG, "Invalid key size: expected %d, got %u", AES_KEY_BYTES, key.size());
+        return std::nullopt;
+    }
+
+    // Validate minimum packet length (Nonce + Tag)
+    if (packet.size() < GCM_NONCE_BYTES + GCM_TAG_BYTES) {
+        ESP_LOGE(TAG, "Packet too short");
+        return std::nullopt;
+    }
+
+    // Max possible plaintext length
+    size_t plaintext_len = packet.size() - GCM_NONCE_BYTES - GCM_TAG_BYTES;
+    std::vector<uint8_t> plaintext_out(plaintext_len);
+
+    // Call your original decryption function
+    bool success = aes_gcm_decrypt(
+        key.data(),
+        packet.data(),
+        packet.size(),
+        plaintext_out.data(),
+        &plaintext_len
+    );
+
+    // Return std::nullopt if decryption or auth check failed
+    if (!success) {
+        return std::nullopt;
+    }
+
+    // Adjust vector size to match the actual decrypted length
+    plaintext_out.resize(plaintext_len);
+
+    return plaintext_out;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 } // namespace encrytion

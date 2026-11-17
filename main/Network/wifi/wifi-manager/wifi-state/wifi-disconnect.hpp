@@ -12,10 +12,7 @@
 #include <chrono>
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "protocol/client/wifi/wifi_disconnected_protocol.hpp"
 #include "wifi/shared.hpp"
-
-#include "Net manager.hpp"
 
 namespace wifi {
  
@@ -35,21 +32,13 @@ inline void on_wifi_disconnected(const char *event, const void *data, size_t len
     const wifi_disconnected_t *info = (const wifi_disconnected_t *)data;
     
 
-    // 1. Populate the protocol struct using the enum
-    Protocol::Wifi::DisconnectedInfo dc_info;
-    dc_info.ssid         =  reinterpret_cast<const char*>(info->ssid)  ;
-    dc_info.reason       = static_cast<Protocol::Wifi::DisconnectReason>(info->reason);
-    dc_info.timestamp_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+    // Log the disconnect event. No protocol::IoT "disconnected" message exists
+    // yet, so we intentionally do NOT emit a non-conforming packet here.
+    ESP_LOGW(TAG, "WiFi disconnected from %s, reason: %u",
+             info->ssid, static_cast<unsigned>(info->reason));
 
-    // 2. Encode to protocol byte payload
-    std::vector<uint8_t> payload = Protocol::Wifi::encode_disconnected(dc_info);
-
-    // 3. Send via network model (safely buffers to Flash FIFO while offline!)
-    Network::send(payload);
-
-    ESP_LOGW(TAG, "WiFi disconnected from %s, reason: %s. Event queued to Flash FIFO.",
-             dc_info.ssid.c_str(),
-             Protocol::Wifi::to_string(dc_info.reason));
+    // TODO(proto): once components/proto defines the "disconnected" message,
+    // encode via protocol::IoT::client::encode...(...) and Network::send(...).
 }
 
 } // namespace wifi
