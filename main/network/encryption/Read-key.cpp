@@ -1,7 +1,8 @@
-#include "interface.hpp"
+#include "crypto.hpp"
 
 #include <cstring>
 
+#include "esp_log.h"
 #include "storage/storage.hpp"
 
 namespace encryption {

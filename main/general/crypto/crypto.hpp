@@ -7,18 +7,12 @@
 
 
 #include "psa/crypto.h"
-#include "esp_random.h"
-#include "esp_log.h"
+
 #include <cstring>
-
-#include <vector>
 #include <optional>
-
 #include <vector>
-#include <optional>
-#include "nvs_flash.h"
-#include "nvs.h"
-#include "esp_log.h"
+
+#include "general/log.hpp"
 
 
 namespace encryption {
@@ -36,7 +30,7 @@ inline bool init_crypto() {
     if (!initialized) {
         psa_status_t status = psa_crypto_init();
         if (status != PSA_SUCCESS) {
-            ESP_LOGE(TAG, "Failed to initialize PSA crypto engine: %d", status);
+            LOG_E(TAG, "Failed to initialize PSA crypto engine: %d", static_cast<int>(status));
             return false;
         }
         initialized = true;

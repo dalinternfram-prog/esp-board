@@ -1,7 +1,6 @@
 
 #include "Opus.hpp" // Includes the class declaration.
-#include "esp_heap_caps.h"
-#include <esp_log.h> // Provides ESP-IDF logging macros.
+#include "general/log.hpp"  // Portable logging: general/ must not use ESP-IDF.
 
 static const char* TAG = "Opus"; // Defines the logging tag.
 static constexpr int MAX_PACKET_SIZE = 1000; // Sets the maximum encoded packet capacity in bytes.
@@ -44,7 +43,7 @@ bool Opus::init(int sampleRate, int channelCount, int bitsPerChannel,
     // Rejects invalid configuration before creating the encoder.
     if (!validSampleRate || !validChannels ||
         !validBitDepth || !validDuration) {
-        ESP_LOGE(TAG, "Invalid Opus configuration");
+        LOG_E(TAG, "Invalid Opus configuration");
         return false;
     }
 
@@ -58,7 +57,7 @@ bool Opus::init(int sampleRate, int channelCount, int bitsPerChannel,
 
     // Checks whether encoder creation succeeded.
     if (error != OPUS_OK || encoder_ == nullptr) {
-        ESP_LOGE(TAG, "Encoder creation failed: %s", opus_strerror(error));
+        LOG_E(TAG, "Encoder creation failed: %s", opus_strerror(error));
         encoder_ = nullptr; // Clears the failed encoder pointer.
         frameSize_ = 0; // Resets the calculated frame size.
         return false; // Reports initialization failure.
@@ -68,7 +67,7 @@ bool Opus::init(int sampleRate, int channelCount, int bitsPerChannel,
     bitsPerChannel_ = bitsPerChannel;
 channelCount_=channelCount;
     // Logs the successful initialization.
-    ESP_LOGI(TAG, "Encoder initialized: %d Hz, %d channel(s), %d-bit PCM, frame size %d",
+    LOG_I(TAG, "Encoder initialized: %d Hz, %d channel(s), %d-bit PCM, frame size %d",
              sampleRate, channelCount, bitsPerChannel_, frameSize_);
  //TODO add complexity here;
 int complexity = 3;
@@ -81,7 +80,7 @@ int err = opus_encoder_ctl(
 if (err != OPUS_OK) {
     // Handle configuration error
 
-        ESP_LOGE(TAG, "opus_encoder_ctl failed: %s", opus_strerror(error));
+        LOG_E(TAG, "opus_encoder_ctl failed: %s", opus_strerror(error));
 }
 
 
@@ -92,7 +91,7 @@ if (err != OPUS_OK) {
 std::vector<unsigned char> Opus::encode(const void* pcmData) {
     // Reject calls made before initialization or with null input.
     if (encoder_ == nullptr || pcmData == nullptr) {
-        ESP_LOGE(TAG, "Encoder is uninitialized or PCM input is null");
+        LOG_E(TAG, "Encoder is uninitialized or PCM input is null");
         return {};
     }
 
@@ -131,7 +130,7 @@ std::vector<unsigned char> Opus::encode(const void* pcmData) {
         }
 // if (!heap_caps_check_integrity_addr(
 //         reinterpret_cast<intptr_t>(floatPcm.data()), true)) {
-//     ESP_LOGE("HEAP", "floatPcm corrupted after conversion");
+//     LOG_E("HEAP", "floatPcm corrupted after conversion");
 //     abort();
 // }
         // Encode the converted floating-point PCM.
@@ -143,20 +142,20 @@ std::vector<unsigned char> Opus::encode(const void* pcmData) {
             static_cast<opus_int32>(packet.size())
         );
     } else {
-        ESP_LOGE(TAG, "Unsupported PCM bit depth: %d", bitsPerChannel_);
+        LOG_E(TAG, "Unsupported PCM bit depth: %d", bitsPerChannel_);
         return {};
     }
 
     // Check for Opus encoding errors.
     if (bytesWritten < 0) {
-        ESP_LOGE(TAG, "Encoding failed: %s", opus_strerror(bytesWritten));
+        LOG_E(TAG, "Encoding failed: %s", opus_strerror(bytesWritten));
         return {};
     }
 
     // Keep only the bytes actually written by Opus.
     packet.resize(static_cast<std::size_t>(bytesWritten));
 
-    // ESP_LOGW(TAG, "Encoded payload size = %u bytes",
+    // LOG_W(TAG, "Encoded payload size = %u bytes",
     //          static_cast<unsigned int>(packet.size()));
 
     return packet;

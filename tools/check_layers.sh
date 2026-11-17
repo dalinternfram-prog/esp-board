@@ -12,14 +12,17 @@ set -u
 cd "$(dirname "$0")/.."
 
 fail=0
-PATTERN='esp_[a-z]|freertos/|driver/|nvs_|nvs\.h|wifi::|psa/|esp_ota'
+# core/app must be fully portable (PSA included); general may use portable
+# libraries such as PSA/Opus/KCP, but never ESP-IDF or FreeRTOS.
+PATTERN_APP='esp_[a-z]|freertos/|driver/|nvs_|nvs\.h|wifi::|psa/|esp_ota'
+PATTERN_GENERAL='esp_[a-z]|freertos/|driver/|nvs_|nvs\.h|wifi::|esp_ota'
 
 check_pure() {
-    local dir="$1" label="$2"
+    local dir="$1" label="$2" pattern="$3"
     [ -d "$dir" ] || return 0
 
     local hits
-    hits=$(grep -rnE "$PATTERN" "$dir" \
+    hits=$(grep -rnE "$pattern" "$dir" \
                --include='*.cpp' --include='*.hpp' --include='*.h' 2>/dev/null \
            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
 
@@ -32,9 +35,9 @@ check_pure() {
     fi
 }
 
-check_pure main/core    "core     (pure C++)"
-check_pure main/app     "app      (pure C++)"
-check_pure main/general "general  (portable)"
+check_pure main/core    "core     (pure C++)"  "$PATTERN_APP"
+check_pure main/app     "app      (pure C++)"  "$PATTERN_APP"
+check_pure main/general "general  (portable)"  "$PATTERN_GENERAL"
 
 # general/ is a leaf: it must never depend on the app core or the hardware layer.
 if [ -d main/general ]; then

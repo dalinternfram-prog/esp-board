@@ -1,4 +1,4 @@
-#include "interface.hpp"
+#include "crypto.hpp"
 #include <cstring>
 
 static const char *TAG = "PSA_AES_GCM";
@@ -14,13 +14,13 @@ namespace encryption {
 
     // Must contain at least Nonce (12B) + Tag (16B)                       
     if (packet_len < GCM_NONCE_BYTES + GCM_TAG_BYTES) {                    // Verify packet is large enough to contain at least the nonce and tag
-        ESP_LOGE(TAG, "Packet too short");                                 // Log error if packet is too small
+        LOG_E(TAG, "Packet too short");                                 // Log error if packet is too small
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
     size_t ciphertext_len = packet_len - GCM_NONCE_BYTES - GCM_TAG_BYTES;  // Calculate the actual length of the ciphertext payload
     if (*plaintext_len < ciphertext_len) {                                 // Check if the provided output buffer is large enough for the decrypted data
-        ESP_LOGE(TAG, "Output buffer too small");                          // Log error if buffer capacity is insufficient
+        LOG_E(TAG, "Output buffer too small");                          // Log error if buffer capacity is insufficient
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
@@ -40,7 +40,7 @@ namespace encryption {
     psa_key_id_t key_id;                                                   // Declare variable for PSA key identifier
     psa_status_t status = psa_import_key(&attributes, key, AES_KEY_BYTES, &key_id); // Import raw key into PSA subsystem
     if (status != PSA_SUCCESS) {                                           // Check if key import succeeded
-        ESP_LOGE(TAG, "Failed to import key: %d", status);                 // Log error if import failed
+        LOG_E(TAG, "Failed to import key: %d", static_cast<int>(status));                 // Log error if import failed
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
@@ -65,7 +65,7 @@ namespace encryption {
     psa_destroy_key(key_id);                                               // Securely destroy the imported key from PSA memory
 
     if (status != PSA_SUCCESS) {                                           // Check if decryption or tag verification failed
-        ESP_LOGE(TAG, "Decryption or auth tag verification failed! Error: %d", status); // Log verification/decryption failure
+        LOG_E(TAG, "Decryption or auth tag verification failed! Error: %d", static_cast<int>(status)); // Log verification/decryption failure
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
@@ -86,13 +86,13 @@ std::optional<std::vector<uint8_t>> aes_gcm_decrypt(
    
     // Validate key size
     if (key.size() != AES_KEY_BYTES) {
-        ESP_LOGE(TAG, "Invalid key size: expected %d, got %u", AES_KEY_BYTES, key.size());
+        LOG_E(TAG, "Invalid key size: expected %u, got %u", static_cast<unsigned>(AES_KEY_BYTES), static_cast<unsigned>(key.size()));
         return std::nullopt;
     }
 
     // Validate minimum packet length (Nonce + Tag)
     if (packet.size() < GCM_NONCE_BYTES + GCM_TAG_BYTES) {
-        ESP_LOGE(TAG, "Packet too short");
+        LOG_E(TAG, "Packet too short");
         return std::nullopt;
     }
 
@@ -129,13 +129,13 @@ std::optional<std::vector<uint8_t>> aes_gcm_decrypt(const std::vector<uint8_t>& 
    
     // Validate key size
     if (key.size() != AES_KEY_BYTES) {
-        ESP_LOGE(TAG, "Invalid key size: expected %d, got %u", AES_KEY_BYTES, key.size());
+        LOG_E(TAG, "Invalid key size: expected %u, got %u", static_cast<unsigned>(AES_KEY_BYTES), static_cast<unsigned>(key.size()));
         return std::nullopt;
     }
 
     // Validate minimum packet length (Nonce + Tag)
     if (packet.size() < GCM_NONCE_BYTES + GCM_TAG_BYTES) {
-        ESP_LOGE(TAG, "Packet too short");
+        LOG_E(TAG, "Packet too short");
         return std::nullopt;
     }
 

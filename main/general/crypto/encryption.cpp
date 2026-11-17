@@ -1,4 +1,4 @@
-#include "interface.hpp"
+#include "crypto.hpp"
 #include <cstring>
 
 static const char *TAG = "PSA_AES_GCM";
@@ -14,7 +14,7 @@ namespace encryption {
     if (!init_crypto()) return false;                                      // Ensure the underlying crypto subsystem is initialized before proceeding
 
     if (*out_len < len + GCM_NONCE_BYTES + GCM_TAG_BYTES) {                // Check if the provided output buffer is large enough for Nonce + Tag + Ciphertext
-        ESP_LOGE(TAG, "Buffer capacity too small");                        // Log an error if the buffer capacity is insufficient
+        LOG_E(TAG, "Buffer capacity too small");                        // Log an error if the buffer capacity is insufficient
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
@@ -27,12 +27,12 @@ namespace encryption {
     psa_key_id_t key_id;                                                   // Declare a variable to store the PSA internal key identifier
     psa_status_t status = psa_import_key(&attributes, key, AES_KEY_BYTES, &key_id); // Import the raw key into the PSA subsystem and retrieve its ID
     if (status != PSA_SUCCESS) {                                           // Check if the key import operation was successful
-        ESP_LOGE(TAG, "Failed to import key: %d", status);                 // Log the specific error code if import failed
+        LOG_E(TAG, "Failed to import key: %d", static_cast<int>(status));                 // Log the specific error code if import failed
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
     uint8_t nonce[GCM_NONCE_BYTES];                                        // Declare a local stack buffer for the random initialization vector (nonce)
-    esp_fill_random(nonce, GCM_NONCE_BYTES);                               // Fill the nonce buffer with cryptographically secure random bytes
+    psa_generate_random(nonce, GCM_NONCE_BYTES);                          // Fill the nonce with cryptographically secure random bytes (PSA RNG)
 
     uint8_t encrypted_payload[len + GCM_TAG_BYTES];                        // Declare a temporary buffer sized to hold both the ciphertext and the authentication tag
     size_t encrypted_output_len = 0;                                       // Initialize a variable to track the actual number of bytes written during encryption
@@ -50,7 +50,7 @@ namespace encryption {
     psa_destroy_key(key_id);                                               // Securely destroy the imported key from the PSA subsystem to clean up memory
 
     if (status != PSA_SUCCESS) {                                           // Check if the encryption process succeeded
-        ESP_LOGE(TAG, "Encryption failed: %d", status);                    // Log the error status code if encryption failed
+        LOG_E(TAG, "Encryption failed: %d", static_cast<int>(status));                    // Log the error status code if encryption failed
         return false;                                                      // Return false to indicate failure
     }                                                                      
 
@@ -76,7 +76,7 @@ std::optional<std::vector<uint8_t>> aes_gcm_encrypt(
 
     // Validate that the key matches the expected byte length
     if (aes_key.size() != AES_KEY_BYTES) {
-        ESP_LOGE(TAG, "Invalid key size: expected %d, got %u", AES_KEY_BYTES, aes_key.size());
+        LOG_E(TAG, "Invalid key size: expected %u, got %u", static_cast<unsigned>(AES_KEY_BYTES), static_cast<unsigned>(aes_key.size()));
         return std::nullopt;
     }
 

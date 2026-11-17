@@ -1,8 +1,7 @@
-#include <esp_log.h>
-#include <esp_random.h>
-#include "psa/crypto.h"
-#include <vector>
+#include "crypto.hpp"
+
 #include <optional>
+#include <vector>
 
 static const char* TAG = "ECDH_SECURE";
 static psa_key_id_t g_local_ecdh_key_id = 0;
@@ -22,7 +21,7 @@ std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() {
     // Generate local keypair
     status = psa_generate_key(&attributes, &g_local_ecdh_key_id);
     if (status != PSA_SUCCESS) {
-        ESP_LOGE(TAG, "Failed to generate local ECDH key: %d", status);
+        LOG_E(TAG, "Failed to generate local ECDH key: %d", static_cast<int>(status));
         return std::nullopt;
     }
 
@@ -32,7 +31,7 @@ std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() {
 
     status = psa_export_public_key(g_local_ecdh_key_id, pub_key.data(), pub_key.size(), &pub_len);
     if (status != PSA_SUCCESS) {
-        ESP_LOGE(TAG, "Failed to export local public key: %d", status);
+        LOG_E(TAG, "Failed to export local public key: %d", static_cast<int>(status));
         psa_destroy_key(g_local_ecdh_key_id);
         g_local_ecdh_key_id = 0;
         return std::nullopt;
@@ -46,7 +45,7 @@ std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() {
 /// Step 2: Take server's public vector, compute shared secret, and return it
 std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::vector<uint8_t>& peer_public_key) {
     if (g_local_ecdh_key_id == 0) {
-        ESP_LOGE(TAG, "No active local ECDH key found!");
+        LOG_E(TAG, "No active local ECDH key found!");
         return std::nullopt;
     }
 
@@ -69,12 +68,12 @@ std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::
     g_local_ecdh_key_id = 0;
 
     if (status != PSA_SUCCESS) {
-        ESP_LOGE(TAG, "Failed to compute shared secret: %d", status);
+        LOG_E(TAG, "Failed to compute shared secret: %d", static_cast<int>(status));
         return std::nullopt;
     }
 
     shared_secret.resize(secret_len);
-    ESP_LOGI(TAG, "Handshake complete! Shared secret derived successfully.");
+    LOG_I(TAG, "Handshake complete! Shared secret derived successfully.");
     return shared_secret; // Ready to use as your AES-GCM key!
 }
 

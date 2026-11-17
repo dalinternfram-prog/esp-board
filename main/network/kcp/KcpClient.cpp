@@ -8,7 +8,7 @@
 #include <cstring>
 #include <vector>
 
-#include "../communicate-data/receive-send-net-data.hpp"
+#include "communicate-data/receive-send-net-data.hpp"
 
 #include "KcpClient.hpp"
 namespace Network {

@@ -5,7 +5,7 @@
 
 #include "core/ports.hpp"
 
-#include "encryption/interface.hpp"
+#include "crypto.hpp"
 
 namespace adapters {
 
