@@ -276,7 +276,7 @@ esp_err_t esp_bus_emit(const char *src, const char *evt, const void *data, size_
         return ESP_ERR_TIMEOUT;
     }
     
-    ESP_LOGI("+++++++++++++++++++++++++++++++", "success emit in esp bus " );
+    //ESP_LOGI("+++++++++++++++++++++++++++++++", "success emit in esp bus " );
     return ESP_OK;
 }
 

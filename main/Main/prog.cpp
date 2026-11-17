@@ -1,3 +1,13 @@
+//TODO though we may switch to SIM,the wifi manager is not as good as expected
+//TODO i'm not sure whether i will fix it nor not
+//TODO:
+
+//TODO another things,the LED light,we should leave a physical button for voice record,
+//TODO but still,i don't quite sure,
+//TODO;and we don't need speech driver;
+
+
+
 
 #include <cstdint>
 #include <memory>
@@ -37,7 +47,7 @@ const char* host ="172.30.165.156";
  const char* ssid="Dalintern device";
   const char* password= "cykcykcyk";  
    const char* TAG = "app_run_loop";
-   std::string DeviceID = "88990011@@";
+   std::string DeviceID = "X";
 void check_filesystem_space() {
     struct statvfs vfs;
     
@@ -82,7 +92,7 @@ check_filesystem_space();
     Network::send(registration_packet);
 
     ESP_LOGI("SERVER", "Sent device registration query for ID: %s", DeviceID.c_str());
-    AudioService::start();
+   // AudioService::start();
 
 
 
