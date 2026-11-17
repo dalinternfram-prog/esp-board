@@ -12,6 +12,12 @@ foreach(source_file ${SOURCES})
 endforeach()
 list(REMOVE_DUPLICATES INCLUDE_DIRS)
 
+# Layer roots. These let files use stable prefixes ("adapters/...", "wifi/...",
+# "general/...") regardless of the directory a source file currently lives in.
+list(APPEND INCLUDE_DIRS
+    "${CMAKE_CURRENT_SOURCE_DIR}/general"
+    "${CMAKE_CURRENT_SOURCE_DIR}/esp_hardware")
+
 # 3. Register the IDF component
 idf_component_register(
     SRCS ${SOURCES}

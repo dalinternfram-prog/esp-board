@@ -4,7 +4,7 @@
 // The application decides what to do with the compressed frame (e.g. wrap it
 // in the IoT protocol and queue it for the session transport).
 
-#include "core/ports.hpp"
+#include "interface.hpp"
 
 #include <functional>
 #include <vector>

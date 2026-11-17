@@ -4,7 +4,7 @@
 // encryption, outbound queue). Pure C++: it only knows the ports, never
 // ESP-IDF / FreeRTOS / KCP / WiFi. This makes it unit-testable on the host.
 
-#include "core/ports.hpp"
+#include "interface.hpp"
 
 #include <mutex>
 #include <queue>

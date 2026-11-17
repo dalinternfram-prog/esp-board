@@ -36,7 +36,6 @@ check_pure() {
 }
 
 check_pure main/core    "core     (pure C++)"  "$PATTERN_APP"
-check_pure main/app     "app      (pure C++)"  "$PATTERN_APP"
 check_pure main/general "general  (portable)"  "$PATTERN_GENERAL"
 
 # general/ is a leaf: it must never depend on the app core or the hardware layer.

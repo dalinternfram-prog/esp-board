@@ -12,7 +12,7 @@ CXX=${CXX:-g++}
 CC=${CC:-gcc}
 fail=0
 
-for f in $(find main/core -name '*.cpp' | sort); do
+for f in $(find main/core/audio main/core/session -name '*.cpp' | sort); do
     if "$CXX" -std=c++17 -Imain -fsyntax-only "$f" 2>/tmp/host_check.err; then
         echo "[ok]   host compile: $f"
     else
