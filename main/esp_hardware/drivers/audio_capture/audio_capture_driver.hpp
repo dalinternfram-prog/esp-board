@@ -25,6 +25,9 @@ public:
     [[nodiscard]] std::size_t channelCount() const noexcept { return channel_count_; }
     [[nodiscard]] std::size_t chunkSize() const noexcept { return chunk_size_; }
 
+    // True when the PSRAM DMA buffer was allocated successfully.
+    [[nodiscard]] bool isReady() const noexcept { return raw_dma_buffer_ != nullptr; }
+
 private:
     void freeBuffer() noexcept;
 

@@ -56,7 +56,7 @@ void SessionManager::start() {
         std::swap(rx_queue_, empty);
     }
 
-    if (!transport_.open()) {
+    if (link_.isUp() && !transport_.open()) {
         logf(LogLevel::Error, "Transport open failed; will keep retrying");
     }
 }
@@ -102,7 +102,7 @@ void SessionManager::tick() {
             }
         }
     }
-    const bool transport_ok = transport_.isOpen();
+    bool transport_ok = transport_.isOpen();
 
     if (transport_ok) {
         // 1. Drive transport timers (retransmissions, acks, ...).
@@ -112,15 +112,18 @@ void SessionManager::tick() {
         // instead of waiting for the full server-timeout window.
         if (state_ != State::Idle && transport_.isDead()) {
             resetSession("dead link");
+            transport_ok = transport_.isOpen();   // reopen may have failed
         }
 
-        // 2. Handshake / reconnect state machine.
-        handleHandshake(now);
+        if (transport_ok) {
+            // 2. Handshake / reconnect state machine.
+            handleHandshake(now);
 
-        // 3. Inbound processing: drain ALL reassembled messages this tick so
-        // bursts cannot pile up between ticks.
-        while (auto msg = transport_.receive()) {
-            handleIncoming(std::move(*msg), now);
+            // 3. Inbound processing: drain ALL reassembled messages this tick
+            // so bursts cannot pile up between ticks.
+            while (auto msg = transport_.receive()) {
+                handleIncoming(std::move(*msg), now);
+            }
         }
 
         // 4. Server liveness: no datagram at all for kServerTimeoutMs.
@@ -183,7 +186,10 @@ void SessionManager::handleHandshake(uint32_t now_ms) {
         handshake_pkt_.resize(sizeof(uint32_t) + pub->size());
         std::memcpy(handshake_pkt_.data(), &conv, sizeof(uint32_t));
         std::memcpy(handshake_pkt_.data() + sizeof(uint32_t), pub->data(), pub->size());
-        transport_.sendRaw(handshake_pkt_);
+        if (transport_.sendRaw(handshake_pkt_) < 0) {
+            logf(LogLevel::Warn, "Handshake send failed; staying in Idle");
+            return;
+        }
         last_attempt_ms_ = now_ms;
         retry_count_ = 1;
         state_ = State::WaitAck;
@@ -242,9 +248,14 @@ void SessionManager::resetSession(const char* reason) {
     handshake_pkt_.clear();
     retry_count_ = 0;
     last_attempt_ms_ = 0;
-    // Recreate the transport with a FRESH conversation id: reusing the old
-    // conv would desync KCP sequence numbers if the peer is still alive.
-    transport_.reset(random_.u32());
+    if (link_.isUp()) {
+        // Recreate the transport with a FRESH conversation id: reusing the old
+        // conv would desync KCP sequence numbers if the peer is still alive.
+        transport_.reset(random_.u32());
+    } else {
+        // Link is down: no socket/DNS work now; tick() reopens once isUp().
+        transport_.close();
+    }
     epoch_++;
     last_open_attempt_ms_ = clock_.nowMs();
 }

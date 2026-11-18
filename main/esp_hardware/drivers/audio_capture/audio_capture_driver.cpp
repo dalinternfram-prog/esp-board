@@ -80,7 +80,8 @@ esp_err_t AudioCaptureDriver::readSamples() {
     size_t bytes_read = 0;
 
     esp_err_t err = i2s_channel_read(bsp_i2s_get_rx_handle(), raw_dma_buffer_,
-                                     buffer_bytes, &bytes_read, 1000);
+                                     buffer_bytes, &bytes_read,
+                                     /*timeout_ms=*/100);  // < AudioService stop window
     if (err != ESP_OK || bytes_read == 0) {
         ESP_LOGW(TAG, "Failed to read PCM data directly from I2S");
         return ESP_FAIL;

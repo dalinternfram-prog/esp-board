@@ -1,5 +1,7 @@
 #include "button_driver.h"
 
+#include <atomic>
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,7 +16,7 @@ static const char *TAG = "button_driver";
 static general::input::ButtonStateMachine s_keys[3];
 static key_callback_t s_callback = NULL;
 static TaskHandle_t s_task_handle = NULL;
-static volatile bool s_running = false;
+static std::atomic<bool> s_running{false};
 static void *s_user_data = NULL;
 
 // 从掩码获取按键状态（按下返回true，根据硬件修改）
@@ -26,7 +28,7 @@ static bool get_key_state(uint32_t mask, key_id_t id) {
 // 100ms扫描一次
 static void scan_timer_ccan(void *arg) {
     (void)arg;
-    while (s_running) {
+    while (s_running.load()) {
         uint32_t mask;
         // 一次读取所有关注的引脚（仅一次I2C操作）
         esp_err_t ret = esp_io_expander_get_level(
@@ -58,15 +60,19 @@ static void scan_timer_ccan(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    // Clean self-exit: the scan task must never be killed from outside while
-    // it may be inside an I2C transaction.
+    // Clean self-exit: clear the handle first so key_module_deinit() can wait
+    // on it instead of a fixed delay; then self-delete.
+    s_task_handle = NULL;
     vTaskDelete(NULL);
 }
 
 // 初始化
 esp_err_t key_module_init(void *user_data) {
+    if (s_task_handle != NULL) {
+        return ESP_ERR_INVALID_STATE;   // already running
+    }
     s_user_data = user_data;
-    s_running = true;
+    s_running.store(true);
     BaseType_t res = xTaskCreatePinnedToCore(scan_timer_ccan, "key_scan", 4096,
                                              NULL, 3, &s_task_handle, 0);
     return (res == pdPASS) ? ESP_OK : ESP_FAIL;
@@ -81,11 +87,13 @@ esp_err_t key_register_callback(key_callback_t callback) {
 
 // 反初始化
 esp_err_t key_module_deinit(void) {
-    // Ask the task to leave its loop; it exits at the next 100 ms scan boundary
-    // and deletes itself. Waiting >1 scan period avoids killing it mid-I2C.
-    s_running = false;
-    vTaskDelay(pdMS_TO_TICKS(150));
-    s_task_handle = NULL;
+    // Ask the task to leave its loop; it exits at the next 100 ms scan boundary,
+    // clears its own handle and self-deletes. Wait on the handle (not a fixed
+    // delay) and never kill it from outside while it may be mid-I2C.
+    s_running.store(false);
+    for (int i = 0; i < 50 && s_task_handle != NULL; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
     s_callback = NULL;
     return ESP_OK;
 }

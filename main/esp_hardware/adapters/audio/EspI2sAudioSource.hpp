@@ -20,8 +20,12 @@ public:
     bool open() override {
         if (!driver_) {
             driver_ = std::make_unique<Hardware::AudioCaptureDriver>(config_);
+            if (!driver_->isReady()) {
+                driver_.reset();   // PSRAM allocation failed
+                return false;
+            }
         }
-        return driver_ != nullptr;
+        return true;
     }
 
     void close() override { driver_.reset(); }

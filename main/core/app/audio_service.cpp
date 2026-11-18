@@ -62,8 +62,12 @@ void audio_task(void* /*arg*/) {
         });
 
     while (state().running.load()) {
-        pipeline.step();
-        svc.tasks.delayMs(kLoopDelayMs);
+        // The I2S read inside step() already blocks ~1 frame and yields, so
+        // only delay on failure: otherwise the loop runs at ~30 ms and the
+        // I2S RX DMA ring overflows (choppy audio).
+        if (!pipeline.step()) {
+            svc.tasks.delayMs(kLoopDelayMs);
+        }
     }
 
     svc.audio_in.close();

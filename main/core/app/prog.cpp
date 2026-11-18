@@ -107,6 +107,13 @@ void app_run_loop(void* arg) {
         if (epoch != last_epoch) {
             last_epoch = epoch;
             registered = false;
+
+            // A new server session must not inherit a running capture: the
+            // server has to send a fresh START command after every reconnect.
+            if (AudioService::is_running()) {
+                AudioService::stop();
+                svc->log.logf(core::LogLevel::Info, "Audio stopped after session reset");
+            }
         }
 
         const bool established = Network::is_established();

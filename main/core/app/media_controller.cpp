@@ -75,19 +75,23 @@ void MediaController::perform(MediaAction action) {
             changeVolume(-static_cast<int>(config_.volume_step));
             break;
         case MediaAction::TogglePlayPause:
+            resume_after_voice_ = false;
             togglePlayPause();
             break;
         case MediaAction::Stop:
+            resume_after_voice_ = false;
             player_.stop();
             indicator_.setMode(core::IndicatorMode::Idle);
             break;
         case MediaAction::NextTrack:
+            resume_after_voice_ = false;
             if (!tracks_.empty()) {
                 index_ = (index_ + 1) % tracks_.size();
                 playCurrent();
             }
             break;
         case MediaAction::PreviousTrack:
+            resume_after_voice_ = false;
             if (!tracks_.empty()) {
                 index_ = (index_ + tracks_.size() - 1) % tracks_.size();
                 playCurrent();

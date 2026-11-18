@@ -22,7 +22,11 @@ namespace wifi {
 
     // NVS must be ready before the WiFi manager loads saved credentials.
     // Idempotent, so it is safe even if someone else initialized it first.
-    nvs_flash_init();
+    esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
 
     // Initialize esp_bus first (required by wifi_manager)
     ret = esp_bus_init();

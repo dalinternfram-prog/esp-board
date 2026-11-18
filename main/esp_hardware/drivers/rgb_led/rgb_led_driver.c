@@ -176,6 +176,13 @@ void _RGB_Example(void *arg)
                 case RGB_CMD_SET_COLOR:
                     RGB_color = msg.param.color;   
                     reset_playing_color=1;
+                    // Idle mode has no periodic animation: redraw the strip
+                    // immediately with the new color.
+                    if (RGB_mode == RGB_MODE_IDLE) {
+                        for (int i = 0; i < LED_STRIP_LED_COUNT; i++) {
+                            _set_single_led_color(RGB_color, i);
+                        }
+                    }
                     //ESP_LOGI(TAG, "收到消息: 颜色=%d", msg.param.color);
                     break;
                 default:

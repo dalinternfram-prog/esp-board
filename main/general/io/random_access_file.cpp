@@ -236,6 +236,7 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
                  src, dst, filePath.c_str(), errno, strerror(errno));
         if (src) fclose(src);
         if (dst) fclose(dst);
+        unlink(tmpPath.c_str());   // drop a possibly-created temp file
         openInternal();
         return;
     }
@@ -245,6 +246,7 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
     if (!buf) {
         fclose(src);
         fclose(dst);
+        unlink(tmpPath.c_str());
         openInternal();
         return;
     }
@@ -256,7 +258,12 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
         while (remaining > 0 && !write_failed) {
             size_t n = std::min<size_t>(remaining, BUF_SIZE);
             size_t r = fread(buf.get(), 1, n, src);
-            if (r == 0) break;
+            if (r == 0) {
+                // Short read or error: never rename a truncated temp file
+                // over the original.
+                write_failed = true;
+                break;
+            }
             size_t w = fwrite(buf.get(), 1, r, dst);
             if (w != r) {
                 write_failed = true;
@@ -319,7 +326,13 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
 
     // Atomic replace: rename() overwrites the destination on POSIX and
     // LittleFS, so a power loss cannot leave the file missing.
-    rename(tmpPath.c_str(), filePath.c_str());
+    if (rename(tmpPath.c_str(), filePath.c_str()) != 0) {
+        LOG_E(TAG, "shiftBytes rename failed: '%s' (errno %d: %s)",
+              filePath.c_str(), errno, strerror(errno));
+        unlink(tmpPath.c_str());
+        openInternal();
+        return;
+    }
 
     // Reopen handle for caller
     openInternal();

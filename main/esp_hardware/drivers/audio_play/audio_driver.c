@@ -68,7 +68,14 @@ static void pipeline_init(void)
     };
 
     esp_gmf_err_t err = esp_audio_simple_player_new(&cfg, &handle);
+    if (err != ESP_GMF_ERR_OK || handle == NULL) {
+        ESP_LOGE(TAG, "esp_audio_simple_player_new failed: %d", err);
+        return;
+    }
     err = esp_audio_simple_player_set_event(handle, mock_event_callback, NULL);
+    if (err != ESP_GMF_ERR_OK) {
+        ESP_LOGE(TAG, "esp_audio_simple_player_set_event failed: %d", err);
+    }
 }
 
 
@@ -77,7 +84,11 @@ esp_gmf_err_t Audio_Play_Music(const char* url)
     if (handle == NULL) return ESP_GMF_ERR_INVALID_ARG;
     esp_audio_simple_player_stop(handle);
     esp_gmf_err_t err = esp_audio_simple_player_run(handle, url, NULL);
-    Audio_PA_EN();
+    if (err == ESP_GMF_ERR_OK) {
+        Audio_PA_EN();
+    } else {
+        ESP_LOGE(TAG, "esp_audio_simple_player_run failed: %d", err);
+    }
     return err;
 }
 
@@ -93,7 +104,9 @@ esp_gmf_err_t Audio_Resume_Play(void)
 {
     if (handle == NULL) return ESP_GMF_ERR_INVALID_ARG;
     esp_gmf_err_t err = esp_audio_simple_player_resume(handle);
-    Audio_PA_EN();
+    if (err == ESP_GMF_ERR_OK) {
+        Audio_PA_EN();
+    }
     return err;
 }
 
