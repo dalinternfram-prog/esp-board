@@ -38,6 +38,7 @@ void SessionManager::logf(LogLevel level, const char* fmt, ...) {
 
 void SessionManager::start() {
     state_ = State::Idle;
+    epoch_ = 0;
     aes_key_.clear();
     handshake_pkt_.clear();
     retry_count_ = 0;
@@ -90,8 +91,10 @@ std::optional<Bytes> SessionManager::poll() {
 void SessionManager::tick() {
     const uint32_t now = clock_.nowMs();
 
-    // 0. Ensure the transport is open (retry, but throttled).
-    if (!transport_.isOpen()) {
+    // 0. Ensure the transport is open (retry, but throttled). Only attempt
+    // when the link is up: if kHost is a hostname, getaddrinfo() must not
+    // stall this worker while WiFi is down.
+    if (!transport_.isOpen() && link_.isUp()) {
         if (last_open_attempt_ms_ == 0 || (now - last_open_attempt_ms_) >= kReopenThrottleMs) {
             last_open_attempt_ms_ = now;
             if (transport_.open()) {
@@ -105,11 +108,18 @@ void SessionManager::tick() {
         // 1. Drive transport timers (retransmissions, acks, ...).
         transport_.tick(now);
 
+        // 1b. KCP dead_link: retransmission limit exhausted -> reconnect early
+        // instead of waiting for the full server-timeout window.
+        if (state_ != State::Idle && transport_.isDead()) {
+            resetSession("dead link");
+        }
+
         // 2. Handshake / reconnect state machine.
         handleHandshake(now);
 
-        // 3. Inbound processing (handshake response or app data).
-        if (auto msg = transport_.receive()) {
+        // 3. Inbound processing: drain ALL reassembled messages this tick so
+        // bursts cannot pile up between ticks.
+        while (auto msg = transport_.receive()) {
             handleIncoming(std::move(*msg), now);
         }
 
@@ -232,9 +242,10 @@ void SessionManager::resetSession(const char* reason) {
     handshake_pkt_.clear();
     retry_count_ = 0;
     last_attempt_ms_ = 0;
-    // Recreate the transport so the peer sees a clean stream (fresh sequence
-    // numbers). Without this, a restarted server and the client desync.
-    transport_.reset();
+    // Recreate the transport with a FRESH conversation id: reusing the old
+    // conv would desync KCP sequence numbers if the peer is still alive.
+    transport_.reset(random_.u32());
+    epoch_++;
     last_open_attempt_ms_ = clock_.nowMs();
 }
 

@@ -11,6 +11,13 @@ EspUdpDatagramIo::EspUdpDatagramIo(const char* host, const char* port) {
     }
 }
 
+EspUdpDatagramIo::~EspUdpDatagramIo() {
+    if (conn_.is_valid()) {
+        ::close(conn_.sock);
+        conn_.sock = -1;
+    }
+}
+
 int EspUdpDatagramIo::send(const uint8_t* data, std::size_t len) {
     return Network::communicate::udp_send(conn_, data, len) ? 0 : -1;
 }

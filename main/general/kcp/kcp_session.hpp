@@ -15,11 +15,12 @@ namespace general::kcp {
 struct KcpConfig {
     uint32_t conversation_id = 0;
 
-    // ikcp_nodelay(nodelay, interval_ms, resend, fast_resend)
-    int nodelay     = 1;
-    int interval_ms = 10;
-    int resend      = 2;
-    int fast_resend = 1;
+    // ikcp_nodelay(nodelay, interval_ms, resend, nc)
+    // nc disables congestion control ("no cwnd", fast mode).
+    int nodelay       = 1;
+    int interval_ms   = 10;
+    int resend        = 2;
+    int no_congestion = 1;
 
     // ikcp_wndsize(send, receive)
     int send_window    = 128;
@@ -37,6 +38,9 @@ public:
     bool open();
     void close();
     bool isOpen() const { return kcp_ != nullptr; }
+
+    // True once ikcp reached its dead_link retransmission limit.
+    bool isDead() const;
 
     int send(const uint8_t* data, std::size_t size);
 

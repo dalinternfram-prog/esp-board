@@ -4,6 +4,7 @@
 #include "esp_log.h"
 
 #include "bsp_board.h"
+#include "rgb_led_driver.h"
 #include "tca9555_driver.h"
 
 static const char* TAG = "hardware";
@@ -18,6 +19,10 @@ void boot(const core::AudioConfig& config) {
                                    static_cast<int>(config.bits_per_chan)));
     tca9555_driver_init();
     esp_sdcard_init(const_cast<char*>("/sdcard"), 10);
+
+    // Must run before any set_rgb_mode/set_rgb_color call: it creates the
+    // message queue and the LED task used by EspIndicator.
+    RGB_Example();
 
     ESP_LOGI(TAG, "Hardware ready");
 }

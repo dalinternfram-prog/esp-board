@@ -111,9 +111,13 @@ struct ITransport {
     virtual void close() = 0;
     virtual bool isOpen() const = 0;
 
-    // Rebuild the transport protocol state so the peer restarts from a clean
-    // sequence (e.g. after a server restart). Must be safe to call repeatedly.
-    virtual void reset() = 0;
+    // Rebuild the transport protocol state with a FRESH conversation id so the
+    // peer restarts from a clean sequence (reusing the conv would desync KCP).
+    virtual void reset(uint32_t new_conv_id) = 0;
+
+    // KCP dead_link: retransmission limit exhausted. The session may reconnect
+    // early instead of waiting for the full server-timeout window.
+    virtual bool isDead() const { return false; }
 
     // Drive internal timers / retransmissions (called every worker tick).
     virtual void tick(uint32_t now_ms) = 0;
@@ -159,6 +163,7 @@ struct IFirmwareUpdater {
     virtual ~IFirmwareUpdater() = default;
     virtual bool init() = 0;
     virtual bool applyFromUrl(const std::string& url) = 0;
+    virtual bool markAppValid() = 0;   // cancel OTA rollback once healthy
 };
 
 // Media playback (music player / announcements).

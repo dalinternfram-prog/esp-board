@@ -37,6 +37,10 @@ public:
 
     bool isEstablished() const { return state_ == State::Established; }
 
+    // Monotonic counter bumped on every session reset. Applications use it to
+    // detect (re)connection transitions even inside one tick interval.
+    uint32_t epoch() const { return epoch_; }
+
 private:
     enum class State { Idle, WaitAck, Established };
 
@@ -53,6 +57,7 @@ private:
     ILogger&    logger_;
 
     State    state_ = State::Idle;
+    uint32_t epoch_ = 0;
     Bytes    aes_key_;
     Bytes    handshake_pkt_;
     uint32_t retry_count_ = 0;

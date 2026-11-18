@@ -50,8 +50,10 @@ bool KcpUdpTransport::isOpen() const {
     return kcp_ && kcp_->isOpen();
 }
 
-void KcpUdpTransport::reset() {
-    // Recreate the socket + KCP state so the stream restarts cleanly.
+void KcpUdpTransport::reset(uint32_t new_conv_id) {
+    // Recreate socket + KCP state with a fresh conversation id so the stream
+    // restarts cleanly even if the old peer session is still alive.
+    conv_id_ = new_conv_id;
     close();
     open();
 }

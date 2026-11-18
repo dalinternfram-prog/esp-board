@@ -13,6 +13,13 @@ class EspUdpDatagramIo : public general::kcp::DatagramIo {
 public:
     EspUdpDatagramIo(const char* host, const char* port);
 
+    // Closes the socket: close()/reset() would otherwise leak one FD per
+    // reconnect (lwIP has a small MAX_SOCKETS budget).
+    ~EspUdpDatagramIo() override;
+
+    EspUdpDatagramIo(const EspUdpDatagramIo&) = delete;
+    EspUdpDatagramIo& operator=(const EspUdpDatagramIo&) = delete;
+
     int send(const uint8_t* data, std::size_t len) override;
     int receive(uint8_t* buffer, std::size_t capacity) override;
 

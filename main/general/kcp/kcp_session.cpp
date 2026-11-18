@@ -21,7 +21,7 @@ bool KcpSession::open() {
 
     ikcp_setoutput(kcp_, &KcpSession::outputCallback);
     ikcp_nodelay(kcp_, config_.nodelay, config_.interval_ms,
-                 config_.resend, config_.fast_resend);
+                 config_.resend, config_.no_congestion);
     ikcp_wndsize(kcp_, config_.send_window, config_.receive_window);
     return true;
 }
@@ -55,11 +55,19 @@ std::vector<uint8_t> KcpSession::poll(uint32_t now_ms) {
         return {};
     }
 
+    // Drain available datagrams (bounded so a UDP flood cannot starve the
+    // worker task) and only count VALID KCP input as liveness.
     uint8_t rx_buffer[1500];
-    const int received = io_.receive(rx_buffer, sizeof(rx_buffer));
-    if (received > 0) {
-        last_rx_ms_ = now_ms;
-        (void)ikcp_input(kcp_, reinterpret_cast<const char*>(rx_buffer), received);
+    constexpr int kMaxDatagramsPerPoll = 32;
+    for (int datagrams = 0; datagrams < kMaxDatagramsPerPoll; ++datagrams) {
+        const int received = io_.receive(rx_buffer, sizeof(rx_buffer));
+        if (received <= 0) {
+            break;
+        }
+        const int err = ikcp_input(kcp_, reinterpret_cast<const char*>(rx_buffer), received);
+        if (err >= 0) {
+            last_rx_ms_ = now_ms;
+        }
     }
 
     const int peek_size = ikcp_peeksize(kcp_);
@@ -76,6 +84,10 @@ std::vector<uint8_t> KcpSession::poll(uint32_t now_ms) {
 
     buffer.resize(static_cast<std::size_t>(bytes_read));
     return buffer;
+}
+
+bool KcpSession::isDead() const {
+    return kcp_ != nullptr && kcp_->state == static_cast<IUINT32>(-1);
 }
 
 void KcpSession::update(uint32_t now_ms) {

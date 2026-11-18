@@ -16,10 +16,12 @@
 namespace {
 
 constexpr uint32_t kLoopDelayMs = 10;
+constexpr uint32_t kKeepaliveMs = 3000;  // 3 s: >=2 round-trips of margin vs the 8 s timeout
 constexpr const char* kHost = "172.30.165.156";
 constexpr const char* kPort = "8080";
 
-void handle_incoming(const core::Bytes& packet, core::IAppServices& svc) {
+void handle_incoming(const core::Bytes& packet, core::IAppServices& svc,
+                     bool& firmware_marked) {
     // 1. Record start/stop commands from the server.
     if (protocol::IoT::client::isRecordControl(packet)) {
         protocol::IoT::RecordControlInfo info;
@@ -55,6 +57,13 @@ void handle_incoming(const core::Bytes& packet, core::IAppServices& svc) {
         if (response.status == protocol::IoT::Status_DeviceQuery::SUCCESS) {
             svc.log.logf(core::LogLevel::Info, "Device query acknowledged: %s",
                          response.message.c_str());
+
+            // The device reached the server and works: cancel OTA rollback
+            // exactly once.
+            if (!firmware_marked && svc.firmware.markAppValid()) {
+                firmware_marked = true;
+                svc.log.logf(core::LogLevel::Info, "Firmware marked valid");
+            }
         } else {
             svc.log.logf(core::LogLevel::Warn, "Device query rejected (status %u): %s",
                          static_cast<unsigned>(response.status), response.message.c_str());
@@ -84,16 +93,35 @@ void app_run_loop(void* arg) {
     const std::vector<uint8_t> registration =
         protocol::IoT::client::encodeDeviceQuery(device_id);
 
-    Network::send(registration);
-    svc->log.logf(core::LogLevel::Info,
-                  "Sent device registration query for ID: %s", device_id.c_str());
+    // Registration is sent on (re)connect transitions and then as a 3 s
+    // keepalive; it is never spammed from the fast loop.
+    bool registered = false;
+    bool firmware_marked = false;
+    uint32_t last_epoch = 0;
+    uint32_t last_registration_ms = 0;
 
     while (true) {
-        Network::send(registration);
+        // Reconnect detection via the session epoch: every reset bumps the
+        // epoch, so a fast Established->reset->Established cycle is never missed.
+        const uint32_t epoch = Network::session_epoch();
+        if (epoch != last_epoch) {
+            last_epoch = epoch;
+            registered = false;
+        }
 
-        const core::Bytes incoming = Network::poll_and_receive();
-        if (!incoming.empty()) {
-            handle_incoming(incoming, *svc);
+        const bool established = Network::is_established();
+        if (established &&
+            (!registered ||
+             (svc->clock.nowMs() - last_registration_ms) >= kKeepaliveMs)) {
+            Network::send(registration);
+            registered = true;
+            last_registration_ms = svc->clock.nowMs();
+        }
+
+        // Drain everything the session produced since the last tick.
+        core::Bytes incoming;
+        while (!(incoming = Network::poll_and_receive()).empty()) {
+            handle_incoming(incoming, *svc, firmware_marked);
         }
 
         svc->tasks.delayMs(kLoopDelayMs);   // yield to keep the task watchdog happy

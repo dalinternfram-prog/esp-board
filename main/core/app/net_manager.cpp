@@ -1,9 +1,14 @@
 // Network module: worker task + SessionManager wiring from injected services.
+// Thread-safety: every session/transport access is guarded by NetState::mutex.
+// The worker holds the mutex only around session->tick() (never across the
+// delay), and close_connection() never force-deletes the worker (killing a
+// task that may hold the mutex would leave it locked forever).
 
 #include "core/app/net_manager.hpp"
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -18,10 +23,14 @@ constexpr uint32_t kWorkerTickMs     = 10;
 constexpr uint32_t kWorkerStackBytes = 8192;
 constexpr int      kWorkerPriority   = 5;
 constexpr int      kWorkerCore       = 1;
+constexpr int      kWorkerExitWaitMs = 2000;
 
 struct NetState {
-    std::unique_ptr<core::ITransport>      transport;
-    std::unique_ptr<core::SessionManager>  session;
+    std::mutex mutex;
+
+    std::unique_ptr<core::ITransport>     transport;
+    std::unique_ptr<core::SessionManager> session;
+
     std::atomic<core::ITaskRunner::TaskId> handle{nullptr};
     std::atomic<bool>                      running{false};
 };
@@ -42,8 +51,12 @@ void network_worker_task(void* /*arg*/) {
 
     svc.log.logf(core::LogLevel::Info, "Network worker task started");
     while (st.running.load()) {
-        if (st.session) {
-            st.session->tick();
+        {
+            // Lock only around tick(); never across the delay below.
+            std::lock_guard<std::mutex> lock(st.mutex);
+            if (st.session) {
+                st.session->tick();
+            }
         }
         svc.tasks.delayMs(kWorkerTickMs);
     }
@@ -58,6 +71,7 @@ void init(const char* host, const char* port, core::IAppServices& svc) {
     services() = &svc;
     auto& st = net();
 
+    std::lock_guard<std::mutex> lock(st.mutex);
     if (st.running.load()) {
         svc.log.logf(core::LogLevel::Warn, "Network already initialized");
         return;
@@ -97,29 +111,40 @@ void init(const char* host, const char* port, core::IAppServices& svc) {
 
 void close_connection() {
     auto& st = net();
-    if (!st.running.load() && !st.session) {
-        return;
-    }
-
     core::IAppServices* svc = services();
+
+    // 1. Ask the worker to exit WITHOUT holding the mutex.
     st.running.store(false);
 
-    for (int i = 0; i < 100 && st.handle.load() != nullptr; ++i) {
+    // 2. Wait for the worker to leave its loop. tick() only performs
+    // non-blocking I/O and fast crypto, so it cannot block indefinitely.
+    int waited_ms = 0;
+    while (st.handle.load() != nullptr && waited_ms < kWorkerExitWaitMs) {
         if (svc) {
             svc->tasks.delayMs(10);
         }
-    }
-    if (st.handle.load() != nullptr) {
-        if (svc) {
-            svc->tasks.stop(st.handle.exchange(nullptr));
-        }
+        waited_ms += 10;
     }
 
-    if (st.session) {
-        st.session->stop();
-        st.session.reset();
+    if (st.handle.load() != nullptr) {
+        // Never force-delete here: the worker might hold NetState::mutex and
+        // vTaskDelete would leave it locked forever.
+        if (svc) {
+            svc->log.logf(core::LogLevel::Error,
+                          "Network worker did not exit; skipping session teardown");
+        }
+        return;
     }
-    st.transport.reset();
+
+    // 3. Worker is gone: teardown is now race-free.
+    {
+        std::lock_guard<std::mutex> lock(st.mutex);
+        if (st.session) {
+            st.session->stop();
+            st.session.reset();
+        }
+        st.transport.reset();
+    }
 
     if (svc) {
         svc->log.logf(core::LogLevel::Info, "Network connection closed");
@@ -128,16 +153,30 @@ void close_connection() {
 
 int send(const std::vector<uint8_t>& data) {
     auto& st = net();
+    std::lock_guard<std::mutex> lock(st.mutex);
     return st.session ? st.session->send(data) : -1;
 }
 
 std::vector<uint8_t> poll_and_receive() {
     auto& st = net();
+    std::lock_guard<std::mutex> lock(st.mutex);
     if (!st.session) {
         return {};
     }
     auto msg = st.session->poll();
     return msg.has_value() ? std::move(*msg) : std::vector<uint8_t>{};
+}
+
+bool is_established() {
+    auto& st = net();
+    std::lock_guard<std::mutex> lock(st.mutex);
+    return st.session && st.session->isEstablished();
+}
+
+uint32_t session_epoch() {
+    auto& st = net();
+    std::lock_guard<std::mutex> lock(st.mutex);
+    return st.session ? st.session->epoch() : 0;
 }
 
 } // namespace Network

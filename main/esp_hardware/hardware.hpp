@@ -7,8 +7,9 @@
 
 namespace hardware {
 
-// Brings up the board: I2S/BSP, IO expander and SD card.
-// Media/UI startup is the composition root's job (it owns the ports).
+// Brings up the board: I2S/BSP, IO expander, SD card and the RGB LED subsystem
+// (queue + task). Media/UI startup is the composition root's job (it owns the
+// ports); RGB_Example() only creates the hardware resources those ports use.
 void boot(const core::AudioConfig& config);
 
 } // namespace hardware

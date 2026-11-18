@@ -16,6 +16,8 @@ class EspFirmwareUpdater : public core::IFirmwareUpdater {
 public:
     bool init() override { return firmware_.init(); }
 
+    bool markAppValid() override { return firmware_.markAppValid(); }
+
     bool applyFromUrl(const std::string& /*url*/) override {
         // TODO: stream the image into beginOtaUpdate()/writeOtaData()/endOtaUpdate().
         return false;

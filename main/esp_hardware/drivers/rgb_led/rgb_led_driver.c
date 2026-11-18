@@ -218,6 +218,10 @@ void RGB_Example(void)
 
 void set_rgb_mode(RGB_example_mode_t mode)
 {
+    if (g_msg_queue == NULL) {
+        ESP_LOGW(TAG, "RGB not initialized yet (queue missing); ignoring mode %d", mode);
+        return;
+    }
     rgb_queue_data_t msg;
     msg.cmd = RGB_CMD_SET_MODE;
     msg.param.mode = mode;
@@ -232,6 +236,10 @@ void set_rgb_mode(RGB_example_mode_t mode)
 
 void set_rgb_color(RGB_example_color_t color)
 {
+    if (g_msg_queue == NULL) {
+        ESP_LOGW(TAG, "RGB not initialized yet (queue missing); ignoring color %d", color);
+        return;
+    }
     rgb_queue_data_t msg;
     msg.cmd = RGB_CMD_SET_COLOR;
     msg.param.color = color;

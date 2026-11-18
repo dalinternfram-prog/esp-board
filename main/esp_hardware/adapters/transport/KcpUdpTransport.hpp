@@ -22,12 +22,13 @@ public:
     bool open() override;
     void close() override;
     bool isOpen() const override;
-    void reset() override;
+    void reset(uint32_t new_conv_id) override;
     void tick(uint32_t now_ms) override;
     int sendReliable(const core::Bytes& data) override;
     int sendRaw(const core::Bytes& data) override;
     std::optional<core::Bytes> receive() override;
     uint32_t lastRxMs() const override;
+    bool isDead() const override { return kcp_ && kcp_->isDead(); }
     uint32_t conversationId() const override { return conv_id_; }
 
 private:

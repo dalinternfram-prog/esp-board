@@ -16,4 +16,8 @@ namespace Network {
     int send(const std::vector<uint8_t>& data);
     std::vector<uint8_t> poll_and_receive();
 
+    // Session status for the application loop (locked internally).
+    bool is_established();
+    uint32_t session_epoch();
+
 } // namespace Network
