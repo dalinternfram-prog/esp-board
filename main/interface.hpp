@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -209,6 +210,46 @@ struct IPlaylist {
     virtual ~IPlaylist() = default;
     virtual std::vector<std::string> scan(const std::string& directory,
                                           const std::string& extension) = 0;
+};
+
+// Audio configuration shared by the application and the hardware layer.
+// Defaults match the current board (see the old macroPhone::argument values).
+struct AudioConfig {
+    uint32_t sample_rate = 16000;
+    uint32_t channel_count = 2;
+    uint32_t bits_per_chan = 32;              // 32-bit I2S slots
+    uint32_t target_frame_duration_ms = 20;   // Opus requires 20 ms
+};
+
+// Creates the transport for a session. Implemented by the composition root
+// because the choice of transport is hardware-specific.
+struct ITransportFactory {
+    virtual ~ITransportFactory() = default;
+    virtual std::unique_ptr<ITransport> create(const char* host, const char* port,
+                                               uint32_t conv_id) = 0;
+};
+
+// Bundle of every port the application needs. core/app receives this by
+// reference and never sees the composition root or the hardware layer.
+struct IAppServices {
+    ILogger&           log;
+    IClock&            clock;
+    IRandom&           random;
+    ICrypto&           crypto;
+    IDeviceInfo&       device;
+    IStorage&          storage;
+    IFileStore&        files;
+    ILink&             link;
+    ITaskRunner&       tasks;
+    IFirmwareUpdater&  firmware;
+    IAudioSource&      audio_in;
+    IAudioEncoder&     audio_encoder;
+    IMediaPlayer&      media_player;
+    IIndicator&        indicator;
+    IButtonInput&      buttons;
+    ISpeechInput&      speech;
+    IPlaylist&         playlist;
+    ITransportFactory& transport_factory;
 };
 
 } // namespace core

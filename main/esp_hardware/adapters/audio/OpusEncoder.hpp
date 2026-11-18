@@ -7,17 +7,18 @@
 #include <vector>
 
 #include "Opus.hpp"
-#include "core/app/arguments.hpp"
 
 namespace adapters {
 
 class OpusEncoder : public core::IAudioEncoder {
 public:
+    explicit OpusEncoder(const core::AudioConfig& config) : config_(config) {}
+
     bool init() override {
-        return encoder_.init(macroPhone::argument::sample_rate,
-                             macroPhone::argument::channel_count,
-                             macroPhone::argument::bits_per_chan,
-                             macroPhone::argument::target_frame_duration_ms);
+        return encoder_.init(static_cast<int>(config_.sample_rate),
+                             static_cast<int>(config_.channel_count),
+                             static_cast<int>(config_.bits_per_chan),
+                             static_cast<int>(config_.target_frame_duration_ms));
     }
 
     bool encode(const std::vector<int16_t>& pcm, core::Bytes& out) override {
@@ -30,10 +31,11 @@ public:
     }
 
     uint32_t frameDurationMs() const override {
-        return static_cast<uint32_t>(macroPhone::argument::target_frame_duration_ms);
+        return config_.target_frame_duration_ms;
     }
 
 private:
+    core::AudioConfig config_;
     Opus encoder_;
 };
 

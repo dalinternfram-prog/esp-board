@@ -11,11 +11,15 @@
 #include "core/app/prog.hpp"
 
 extern "C" void app_main() {
-    hardware::boot();
+    // Program-lifetime composition root: a plain object, no singleton accessor.
+    static app::AppContext context;
 
-    if (app::context().tasks.start("app_run_loop_task", 9152, 5, -1,
-                                   app_run_loop, nullptr) == nullptr) {
-        app::context().logger.logf(core::LogLevel::Error,
-                                   "Failed to start the application task");
+    hardware::boot(context.audio_config);
+    context.startMedia();
+
+    if (context.tasks.start("app_run_loop_task", 9152, 5, -1,
+                            app_run_loop, &context.services()) == nullptr) {
+        context.logger.logf(core::LogLevel::Error,
+                            "Failed to start the application task");
     }
 }

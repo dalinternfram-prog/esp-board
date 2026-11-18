@@ -5,30 +5,30 @@ the application core knows nothing about ESP-IDF, FreeRTOS, KCP, WiFi or the boa
 
 ```
 main/
-  interface.hpp        ports: the contract every layer speaks
+  interface.hpp        ports + AudioConfig + IAppServices + ITransportFactory
+  main.cpp             thin entry: hardware::boot(config) + start core/app task
+  app_context.*        composition root (plain class) -> core::IAppServices
   core/                application + domain (pure C++)
     app/               prog, audio_service, net worker, media_controller,
-                       session_factory, aes_key_store
+                       session_factory
     session/           SessionManager (handshake, liveness, reconnect)
-    audio/             AudioPipeline + AudioFormat (frame math)
-    device/ storage/   thin facades over IDeviceInfo / IStorage / IFileStore
+    audio/             AudioPipeline
   general/             portable libraries (no core/ or esp_hardware/ deps)
     kcp/               ikcp + KcpSession + DatagramIo
-    crypto/            PSA AES-256-GCM + ECDH P-256
+    crypto/            PSA AES-256-GCM + ECDH P-256 (backend injected)
     opus/              Opus wrapper
+    audio/             frame math
     io/                path join, stdio file store, random-access file
     fs/                directory lister
     input/             button debounce / long-press state machine
     util/              MAC / device-id formatting
   esp_hardware/        the ONLY folder allowed to touch ESP-IDF
-    hardware.hpp/.cpp  boot() + board bring-up (HARDWARE_HEADER in main.cpp)
-    app_context.*      composition root: concrete adapters + session
+    hardware.hpp/.cpp  boot(const core::AudioConfig&) + board bring-up
     adapters/          port implementations (incl. media/UI inputs)
     drivers/           bsp, i2s, buttons, led, speech, io expander
     wifi/              WiFi manager / provisioning
     net/kcp/           UDP datagram IO (KCP session is in general/)
     storage/           LittleFS mount + OTA backend
-  main.cpp             thin entry: hardware::boot() + start core/app task
 ```
 
 `main/CMakeLists.txt` adds `main/`, `main/general` and `main/esp_hardware` as
@@ -57,6 +57,11 @@ include roots, so includes use stable prefixes (`interface.hpp`, `core/...`,
 | `IButtonInput` | physical buttons | `EspButtonInput` | any input |
 | `ISpeechInput` | voice commands | `EspSpeechInput` | any ASR |
 | `IPlaylist` | track listing | `EspSdPlaylist` | any FS |
+| `ITransportFactory` | create the session transport | `AppContext` | any transport |
+
+`IAppServices` (also in `interface.hpp`) bundles references to every port above
+plus `ITransportFactory`; `core/app` receives it by reference. `AudioConfig`
+carries the sample rate / channels / bit depth / frame duration.
 
 ## General logic rescued from `esp_hardware`
 
@@ -72,22 +77,28 @@ compiled from `core/` and `general/`:
 | path join, stdio read/write | `general/io/Path`, `general/io/StdioFileStore` | `adapters/storage/EspFileStore` |
 | random-access file ops (offset/append/shift/truncate) | `general/io/RandomAccessFile` | `storage/file_manager` |
 | MAC / device-id formatting | `general/util/format.hpp` | `adapters/device/EspDeviceInfo` |
-| AES key load + validation | `core/app/aes_key_store.cpp` | `storage/` |
-| session wiring / conv id | `core/app/session_factory` | `app_context.cpp` |
-| audio frame sizing | `core/audio/AudioFormat` | `drivers/audio_capture` |
+| session wiring / conv id | `core/app/session_factory` + `Network::init` | `AppContext::create` |
+| audio frame sizing | `general/audio/frame_math.hpp` | `drivers/audio_capture` |
 
 ## Layer rules (enforced)
 
-`tools/check_layers.sh` (grep gate):
+`tools/check_layers.sh` (grep + include gate):
 
 * `core/` never mentions ESP-IDF, FreeRTOS, NVS, WiFi or PSA.
-* `general/` never mentions ESP-IDF, FreeRTOS, NVS or WiFi (PSA/Opus/KCP allowed).
+* `core/` never includes `app_context.hpp`, `esp_hardware/` or `adapters/`.
+* `general/` never mentions ESP-IDF, FreeRTOS, NVS or WiFi. PSA/Opus/KCP are
+  allowed: they are portable libraries, not ESP-IDF headers.
 * `general/` never includes `interface.hpp`, `core/` or `esp_hardware/`.
+* `esp_hardware/` never includes `core/`; it may use `interface.hpp`, `general/`
+  and ESP-IDF.
+* `main/` (`app_context`, `main.cpp`) is the composition root and may include
+  everything.
 
 `tools/host_check.sh` (host compiler):
 
-* `core/audio` + `core/session` compile with `-fsyntax-only` on the host.
-* `general/kcp/ikcp.c` compiles as C99.
+* `core/app` (`media_controller`, `net_manager`, `session_factory`),
+  `core/audio`, `core/session` compile with `-fsyntax-only` on the host.
+* `general/` pure sources + `general/kcp/ikcp.c` (C99) compile on the host.
 * `general/crypto` and `general/opus` need PSA/libopus headers, so they are
   validated by the IDF build.
 
@@ -111,37 +122,46 @@ directory (the CMake glob has no `CONFIGURE_DEPENDS`).
 
 ## Application (`main/core/app`)
 
-* `prog.cpp` - device registration + server message dispatch. Uses only
-  `app::context()` ports; no ESP-IDF/FreeRTOS includes.
+* `prog.cpp` - device registration + server message dispatch. Receives
+  `core::IAppServices&` from the platform layer; no ESP-IDF/root includes.
 * `audio_service.cpp` - start/stop the capture task through `ITaskRunner`;
   record acks use `IClock::nowUnixMs()`.
-* `net_manager.cpp` - network worker task through `ITaskRunner`; delegates
-  protocol work to `core::SessionManager`.
+* `net_manager.cpp` - builds the transport/session via `ITransportFactory` +
+  `SessionManager`, then runs the worker task through `ITaskRunner`.
 
 ## Hardware (`main/esp_hardware`)
 
-* `hardware.cpp` - board bring-up: BSP/I2S, IO expander, SD card, playback,
-  buttons, speech engine and music-library scan. `main.cpp` includes it through
-  the `HARDWARE_HEADER` macro.
-* `app_context.*` - composition root; the only place that names concrete
-  adapters and owns the network session.
+* `hardware.cpp` - board bring-up: BSP/I2S, IO expander and SD card.
+  `main.cpp` includes it through the `HARDWARE_HEADER` macro.
 * `adapters/` - `KcpUdpTransport`, `EspWifiLink`, `EspCrypto`, `EspClock`,
   `EspRandom`, `EspLogger`, `EspTaskRunner`, `EspDeviceInfo`,
   `EspNvsStorage`, `EspFileStore`, `EspFirmwareUpdater`,
-  `EspI2sAudioSource`, `OpusEncoder`.
+  `EspI2sAudioSource`, `OpusEncoder`, `EspMediaPlayer`, `EspIndicator`,
+  `EspButtonInput`, `EspSpeechInput`, `EspSdPlaylist`.
 * `drivers/`, `wifi/`, `net/kcp/`, `storage/` - the ESP-IDF implementation
   details behind those adapters.
 
 ## Composition root
 
-`main/esp_hardware/app_context.{hpp,cpp}` -> `app::context()` owns every
-concrete adapter and the network session. Modules (`Network`, `device::info()`,
-`storage::nvs()/files()`) delegate to it; no scattered module singletons.
+`main/app_context.{hpp,cpp}` is a **plain class** owned by `main.cpp`. It
+constructs every concrete adapter and exposes `core::IAppServices& services()`.
+There is no `app::context()` singleton: `main.cpp` passes
+`&context.services()` to `app_run_loop`, so `core/app` receives ports by
+reference and never sees the composition root.
 
 **Swapping hardware** means replacing `main/esp_hardware/` (or pointing
 `HARDWARE_HEADER` at another folder). `main/core/` and `main/general/` stay
-untouched; `main/main.cpp` only calls `hardware::boot()` and starts the
-application task.
+untouched; `main/main.cpp` only calls `hardware::boot(context.audio_config)`,
+starts the media controller and the application task.
+
+## Crypto backend
+
+`general/crypto` holds the AES-256-GCM / ECDH protocol logic on top of PSA
+(mbedTLS is a portable library, so that code stays general).
+`encryption::CryptoBackend` is the only platform seam:
+`esp_hardware/adapters/crypto/EspCrypto.hpp` implements `EspCryptoBackend`
+(`psa_crypto_init()` + `psa_generate_random()`), so a different MCU only
+replaces that thin wrapper.
 
 ## Migration status
 
@@ -153,11 +173,16 @@ application task.
 - [x] Four-folder reorg: `interface.hpp` / `core/` / `general/` / `esp_hardware/`.
 - [x] Gates: `tools/check_layers.sh` + `tools/host_check.sh`.
 - [x] General logic rescued from `esp_hardware/` (KCP session, media controller,
-      button state machine, directory lister, file I/O, formatting, key store,
+      button state machine, directory lister, file I/O, formatting,
       session factory, audio frame math).
 - [x] Dead code removed: duplicate protocols, `core/ports.hpp` shim, test blocks.
 - [x] Deleted now-unused hardware leftovers (`storage/nvs`, `KcpClient`,
       duplicate `FileManager` paths, `Folder_retrieval`, commented duplicates).
+- [x] Dependency directions enforced: `core/` → interface/general only;
+      `esp_hardware/` → interface/general only; `general/` is a leaf.
+- [x] `AppContext` is a plain class in `main/`; `app::context()` singleton removed.
+- [x] Audio config + frame math moved to the contract / `general/audio/`.
+- [x] Crypto backend injected (`CryptoBackend` / `EspCryptoBackend`).
 - [ ] Next: 4G adapter implementing `ILink`/`ITransport`;
       `IFirmwareUpdater::applyFromUrl()` streaming.
 

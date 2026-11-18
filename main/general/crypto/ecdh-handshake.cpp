@@ -3,29 +3,30 @@
 #include <optional>
 #include <vector>
 
-static const char* TAG = "ECDH_SECURE";
 static psa_key_id_t g_local_ecdh_key_id = 0;
-namespace encryption  {
 
+namespace encryption {
 
-/// Step 1: Generate local keypair and return our public key as a vector
-std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() {
-    psa_status_t status;
+// Step 1: generate the local keypair and return our public key.
+std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key(CryptoBackend& backend) {
+    if (!backend.init()) {
+        LOG_E(TAG, "Crypto backend init failed");
+        return std::nullopt;
+    }
+
     psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
-
     psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_DERIVE);
     psa_set_key_algorithm(&attributes, PSA_ALG_ECDH);
     psa_set_key_type(&attributes, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
     psa_set_key_bits(&attributes, 256);
 
-    // Generate local keypair
-    status = psa_generate_key(&attributes, &g_local_ecdh_key_id);
+    psa_status_t status = psa_generate_key(&attributes, &g_local_ecdh_key_id);
     if (status != PSA_SUCCESS) {
         LOG_E(TAG, "Failed to generate local ECDH key: %d", static_cast<int>(status));
         return std::nullopt;
     }
 
-    // P-256 uncompressed public key max size is 65 bytes
+    // P-256 uncompressed public key max size is 65 bytes.
     std::vector<uint8_t> pub_key(65);
     size_t pub_len = 0;
 
@@ -37,19 +38,25 @@ std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key() {
         return std::nullopt;
     }
 
-    // Shrink vector to match the actual exported public key size
     pub_key.resize(pub_len);
-    return pub_key; // Ready to send over KCP!
+    return pub_key;
 }
 
-/// Step 2: Take server's public vector, compute shared secret, and return it
-std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::vector<uint8_t>& peer_public_key) {
+// Step 2: take the server's public key, derive the shared secret, drop the key.
+std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(
+    const std::vector<uint8_t>& peer_public_key, CryptoBackend& backend)
+{
+    if (!backend.init()) {
+        LOG_E(TAG, "Crypto backend init failed");
+        return std::nullopt;
+    }
+
     if (g_local_ecdh_key_id == 0) {
         LOG_E(TAG, "No active local ECDH key found!");
         return std::nullopt;
     }
 
-    // P-256 shared secret is always 32 bytes
+    // P-256 shared secret is always 32 bytes.
     std::vector<uint8_t> shared_secret(32);
     size_t secret_len = 0;
 
@@ -60,10 +67,8 @@ std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::
         peer_public_key.size(),
         shared_secret.data(),
         shared_secret.size(),
-        &secret_len
-    );
+        &secret_len);
 
-    // Clean up local private key immediately
     psa_destroy_key(g_local_ecdh_key_id);
     g_local_ecdh_key_id = 0;
 
@@ -74,8 +79,7 @@ std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(const std::
 
     shared_secret.resize(secret_len);
     LOG_I(TAG, "Handshake complete! Shared secret derived successfully.");
-    return shared_secret; // Ready to use as your AES-GCM key!
+    return shared_secret;
 }
 
-
-}
+} // namespace encryption

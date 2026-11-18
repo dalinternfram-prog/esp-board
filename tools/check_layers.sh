@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Layer guard for the Ports & Adapters layout.
 #
-#   interface.hpp  <- core/ is the only folder allowed to include it
+#   interface.hpp  the contract: core/ + esp_hardware/ + main/ may include it
 #   core/          pure C++ application (no ESP-IDF / FreeRTOS / WiFi / NVS)
-#   general/       portable helpers (KCP, crypto, codecs) - no core/esp_hardware deps
-#   esp_hardware/  the only place allowed to touch ESP-IDF
+#   general/       portable helpers (KCP, crypto, codecs) - leaf; no core/hardware deps
+#   esp_hardware/  the only place allowed to touch ESP-IDF; never includes core/
+#   main/          composition root (app_context + main.cpp); may include everything
 #
 # Run from anywhere; exits non-zero on violations.
 
@@ -47,6 +48,28 @@ if [ -d main/general ]; then
         echo "$hits" | sed 's/^/       /'
         fail=1
     fi
+fi
+
+# core/ must never include the composition root or the hardware layer.
+hits=$(grep -rnE '#include[[:space:]]*"(app_context\.hpp|esp_hardware/|adapters/)' main/core \
+           --include='*.cpp' --include='*.hpp' --include='*.h' 2>/dev/null || true)
+if [ -n "$hits" ]; then
+    echo "[FAIL] core depends on the composition root / hardware layer:"
+    echo "$hits" | sed 's/^/       /'
+    fail=1
+else
+    echo "[ok]   core     (no composition/hardware includes)"
+fi
+
+# esp_hardware/ may use interface.hpp + general/ + ESP-IDF only; never core/.
+hits=$(grep -rnE '#include[[:space:]]*"core/' main/esp_hardware \
+           --include='*.cpp' --include='*.hpp' --include='*.h' 2>/dev/null || true)
+if [ -n "$hits" ]; then
+    echo "[FAIL] esp_hardware depends on core/ (use interface.hpp or general/):"
+    echo "$hits" | sed 's/^/       /'
+    fail=1
+else
+    echo "[ok]   esp_hardware (no core/ includes)"
 fi
 
 if [ "$fail" -eq 0 ]; then

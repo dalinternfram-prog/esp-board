@@ -2,15 +2,16 @@
 
 #include <cstdint>
 
+namespace core { struct IAppServices; }
+
 namespace AudioService {
 
-    // [CHANGE]: Fully creates and initializes the audio task and hardware on CPU Core 1
-    void start();
+    // Starts the capture/encode task using the injected application services.
+    void start(core::IAppServices& services);
 
-    // [CHANGE]: Completely shuts down, releases hardware/codecs, and deletes the task
+    // Stops the task and releases the audio hardware.
     void stop();
 
-    // Checks whether the task is currently active/alive
     bool is_running();
 
 } // namespace AudioService

@@ -3,10 +3,13 @@
 #include <cstdint>
 #include <vector>
 
+namespace core { struct IAppServices; }
+
 namespace Network {
 
-    // Lifecycle Management
-    void init(const char* host, const char* port);
+    // Builds the transport/session from the injected services and starts the
+    // network worker task.
+    void init(const char* host, const char* port, core::IAppServices& services);
     void close_connection();
 
     // Data Flow APIs (Thread-safe, multi-producer compatible)

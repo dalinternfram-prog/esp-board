@@ -3,27 +3,21 @@
 #include "esp_err.h"
 #include "esp_log.h"
 
-#include "app_context.hpp"
 #include "bsp_board.h"
-#include "core/app/arguments.hpp"
 #include "tca9555_driver.h"
 
-static const char *TAG = "hardware";
+static const char* TAG = "hardware";
 
 namespace hardware {
 
-void boot() {
+void boot(const core::AudioConfig& config) {
     ESP_LOGI(TAG, "Booting hardware...");
 
-    ESP_ERROR_CHECK(esp_board_init(macroPhone::argument::sample_rate,
-                                   macroPhone::argument::channel_count,
-                                   macroPhone::argument::bits_per_chan));
+    ESP_ERROR_CHECK(esp_board_init(config.sample_rate,
+                                   static_cast<int>(config.channel_count),
+                                   static_cast<int>(config.bits_per_chan)));
     tca9555_driver_init();
-    esp_sdcard_init(const_cast<char *>("/sdcard"), 10);
-
-    // Media/UI behaviour lives in core/app/MediaController; AppContext wires the
-    // ESP adapters (player, indicator, buttons, speech, playlist).
-    app::context().startMedia();
+    esp_sdcard_init(const_cast<char*>("/sdcard"), 10);
 
     ESP_LOGI(TAG, "Hardware ready");
 }

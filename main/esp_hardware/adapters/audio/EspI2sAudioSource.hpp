@@ -15,9 +15,11 @@ namespace adapters {
 
 class EspI2sAudioSource : public core::IAudioSource {
 public:
+    explicit EspI2sAudioSource(const core::AudioConfig& config) : config_(config) {}
+
     bool open() override {
         if (!driver_) {
-            driver_ = std::make_unique<Hardware::AudioCaptureDriver>();
+            driver_ = std::make_unique<Hardware::AudioCaptureDriver>(config_);
         }
         return driver_ != nullptr;
     }
@@ -36,6 +38,7 @@ public:
     }
 
 private:
+    core::AudioConfig config_;
     std::unique_ptr<Hardware::AudioCaptureDriver> driver_;
 };
 
