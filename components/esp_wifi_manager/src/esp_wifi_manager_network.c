@@ -94,13 +94,21 @@ void wifi_mgr_start_connect_sequence(void)
         esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
 
         for (int retry = 0; retry < g_wifi_mgr->config.max_retry_per_network; retry++) {
-            // ===== BEGIN factory_01 PATCH =====
-            // Force a clean disconnect before every attempt. The original code
-            // re-connected without cleanup; after a timeout the station could
-            // still be associating, so esp_wifi_connect() returned
-            // ESP_ERR_WIFI_CONN and all retries were burned instantly.
-            esp_wifi_disconnect();
-            vTaskDelay(pdMS_TO_TICKS(WIFI_MGR_DISCONNECT_SETTLE_MS));
+            // ===== BEGIN factory_01 PATCH v2 =====
+            // Only force a clean disconnect after a FAILED attempt (a previous
+            // try can leave the station mid-association, so esp_wifi_connect()
+            // returns ESP_ERR_WIFI_CONN and burns all retries instantly).
+            //
+            // Never force it before the first attempt: esp_wifi_disconnect()
+            // emits WIFI_EVENT_STA_DISCONNECTED (reason 8) even from a clean
+            // state. The manager task processes that queued event AFTER the
+            // connect succeeds, misreads it as a real link drop and schedules
+            // a 5 s auto-reconnect -> the next sequence disconnects the healthy
+            // link again -> endless 5 s connect/disconnect loop.
+            if (retry > 0) {
+                esp_wifi_disconnect();
+                vTaskDelay(pdMS_TO_TICKS(WIFI_MGR_DISCONNECT_SETTLE_MS));
+            }
             // ===== END factory_01 PATCH =====
 
             xEventGroupClearBits(g_wifi_mgr->event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
