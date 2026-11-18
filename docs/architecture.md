@@ -114,8 +114,14 @@ directory (the CMake glob has no `CONFIGURE_DEPENDS`).
   any --link down--> IDLE (reset transport)
   ```
   * handshake retries forever with backoff 600ms -> 3s (server may boot late)
-  * session reset recreates the transport, so a restarted server and the client
-    start from sequence number 0 again (no KCP desync)
+  * every reset reopens the transport with a FRESH conversation id (random.u32)
+    so a restarted/alive server and the client never desync KCP sequences
+  * KCP dead_link (retransmission limit) triggers an early reset instead of
+    waiting for the full 8 s server timeout
+  * transport.open() is attempted only while the link is up (no getaddrinfo
+    stalls when offline)
+  * inbound messages are drained in a loop per tick; KCP datagrams drained
+    per poll with a 32-datagram bound
   * outbound data queued (max 128) and dropped when not established
     (real-time audio: dropping is better than buffering)
 * `audio/AudioPipeline` - capture -> encode -> emit `(compressed, timestampMs)`.
@@ -124,6 +130,9 @@ directory (the CMake glob has no `CONFIGURE_DEPENDS`).
 
 * `prog.cpp` - device registration + server message dispatch. Receives
   `core::IAppServices&` from the platform layer; no ESP-IDF/root includes.
+  Registration is sent on (re)connect transitions detected via the session
+  epoch, then as a 3 s keepalive; the RX queue is drained per loop iteration;
+  `IFirmwareUpdater::markAppValid()` runs once on the first successful query.
 * `audio_service.cpp` - start/stop the capture task through `ITaskRunner`;
   record acks use `IClock::nowUnixMs()`.
 * `net_manager.cpp` - builds the transport/session via `ITransportFactory` +
@@ -183,6 +192,11 @@ replaces that thin wrapper.
 - [x] `AppContext` is a plain class in `main/`; `app::context()` singleton removed.
 - [x] Audio config + frame math moved to the contract / `general/audio/`.
 - [x] Crypto backend injected (`CryptoBackend` / `EspCryptoBackend`).
+- [x] Robustness pass: RGB boot crash, UDP FD leak, keepalive instead of
+      registration spam, fresh conv per reset, dead-link early reset,
+      NetState/MediaController mutexes, graceful task shutdown, ECDH key
+      ownership (`EcdhHandshake`), OTA `markAppValid()`, Opus scratch buffers,
+      atomic `shiftBytes()` replace.
 - [ ] Next: 4G adapter implementing `ILink`/`ITransport`;
       `IFirmwareUpdater::applyFromUrl()` streaming.
 
