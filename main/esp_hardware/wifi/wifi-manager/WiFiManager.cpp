@@ -20,6 +20,10 @@ namespace wifi {
  
         esp_err_t ret ;
 
+    // NVS must be ready before the WiFi manager loads saved credentials.
+    // Idempotent, so it is safe even if someone else initialized it first.
+    nvs_flash_init();
+
     // Initialize esp_bus first (required by wifi_manager)
     ret = esp_bus_init();
     if (ret != ESP_OK) {

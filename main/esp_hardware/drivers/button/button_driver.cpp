@@ -3,7 +3,6 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/timers.h"
 #include "esp_timer.h"
 #include "tca9555_driver.h"
 
@@ -14,7 +13,8 @@ static const char *TAG = "button_driver";
 // One pure state machine per key; this driver only reads GPIO and dispatches.
 static general::input::ButtonStateMachine s_keys[3];
 static key_callback_t s_callback = NULL;
-static TimerHandle_t s_timer = NULL;
+static TaskHandle_t s_task_handle = NULL;
+static volatile bool s_running = false;
 static void *s_user_data = NULL;
 
 // 从掩码获取按键状态（按下返回true，根据硬件修改）
@@ -26,7 +26,7 @@ static bool get_key_state(uint32_t mask, key_id_t id) {
 // 100ms扫描一次
 static void scan_timer_ccan(void *arg) {
     (void)arg;
-    while (1) {
+    while (s_running) {
         uint32_t mask;
         // 一次读取所有关注的引脚（仅一次I2C操作）
         esp_err_t ret = esp_io_expander_get_level(
@@ -34,8 +34,11 @@ static void scan_timer_ccan(void *arg) {
             (1ULL << KEY_ID_9) | (1ULL << KEY_ID_10) | (1ULL << KEY_ID_11),
             &mask);
         if (ret != ESP_OK) {
+            // Never return from a FreeRTOS task; keep scanning on transient
+            // I2C failures (returning would abort the task).
             ESP_LOGE(TAG, "读取IO扩展芯片失败");
-            return;
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
         }
 
         const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000);
@@ -54,13 +57,19 @@ static void scan_timer_ccan(void *arg) {
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
+
+    // Clean self-exit: the scan task must never be killed from outside while
+    // it may be inside an I2C transaction.
+    vTaskDelete(NULL);
 }
 
 // 初始化
 esp_err_t key_module_init(void *user_data) {
     s_user_data = user_data;
-    xTaskCreatePinnedToCore(scan_timer_ccan, "key_scan", 4096, NULL, 3, NULL, 0);
-    return ESP_OK;
+    s_running = true;
+    BaseType_t res = xTaskCreatePinnedToCore(scan_timer_ccan, "key_scan", 4096,
+                                             NULL, 3, &s_task_handle, 0);
+    return (res == pdPASS) ? ESP_OK : ESP_FAIL;
 }
 
 // 注册回调
@@ -72,10 +81,11 @@ esp_err_t key_register_callback(key_callback_t callback) {
 
 // 反初始化
 esp_err_t key_module_deinit(void) {
-    if (s_timer) {
-        xTimerStop(s_timer, 0);
-        xTimerDelete(s_timer, 0);
-    }
+    // Ask the task to leave its loop; it exits at the next 100 ms scan boundary
+    // and deletes itself. Waiting >1 scan period avoids killing it mid-I2C.
+    s_running = false;
+    vTaskDelay(pdMS_TO_TICKS(150));
+    s_task_handle = NULL;
     s_callback = NULL;
     return ESP_OK;
 }

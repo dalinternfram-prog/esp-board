@@ -375,8 +375,8 @@ esp_err_t esp_audio_play(const int16_t* data, int length, uint32_t ticks_to_wait
 {
     size_t bytes_write = 0;
     esp_err_t ret = ESP_OK;
-    if (!play_dev) {
-        return ESP_FAIL;
+    if (!play_dev || data == NULL || length <= 0) {
+        return ESP_ERR_INVALID_ARG;
     }
 
     int out_length= length;
@@ -388,7 +388,10 @@ esp_err_t esp_audio_play(const int16_t* data, int length, uint32_t ticks_to_wait
     if (s_bits_per_chan != 32) {
         out_length = length * 2;
         data_out = malloc(out_length);
-        for (int i = 0; i < length / sizeof(int16_t); i++) {
+        if (data_out == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+        for (int i = 0; i < (int)(length / sizeof(int16_t)); i++) {
             int ret = data[i];
             data_out[i] = ret << 16;
         }
@@ -398,6 +401,12 @@ esp_err_t esp_audio_play(const int16_t* data, int length, uint32_t ticks_to_wait
     if (s_play_channel_format != 2 || s_play_sample_rate != 16000) {
         out_length *= audio_time;
         data_out_1 = malloc(out_length);
+        if (data_out_1 == NULL) {
+            if (data_out != NULL) {
+                free(data_out);
+            }
+            return ESP_ERR_NO_MEM;
+        }
         int *tmp_data = NULL;
         if (data_out != NULL) {
             tmp_data = data_out;
@@ -405,7 +414,7 @@ esp_err_t esp_audio_play(const int16_t* data, int length, uint32_t ticks_to_wait
             tmp_data = (int *)data;
         }
 
-        for (int i = 0; i < out_length / (audio_time * sizeof(int)); i++) {
+        for (int i = 0; i < (int)(out_length / (audio_time * sizeof(int))); i++) {
             for (int j = 0; j < audio_time; j++) {
                 data_out_1[audio_time * i + j] = tmp_data[i];
             }

@@ -74,6 +74,7 @@ static void pipeline_init(void)
 
 esp_gmf_err_t Audio_Play_Music(const char* url)
 {
+    if (handle == NULL) return ESP_GMF_ERR_INVALID_ARG;
     esp_audio_simple_player_stop(handle);
     esp_gmf_err_t err = esp_audio_simple_player_run(handle, url, NULL);
     Audio_PA_EN();
@@ -82,6 +83,7 @@ esp_gmf_err_t Audio_Play_Music(const char* url)
 
 esp_gmf_err_t Audio_Stop_Play(void)
 {
+    if (handle == NULL) return ESP_GMF_ERR_INVALID_ARG;
     esp_gmf_err_t err = esp_audio_simple_player_stop(handle);
     Audio_PA_DIS();
     return err;
@@ -89,6 +91,7 @@ esp_gmf_err_t Audio_Stop_Play(void)
 
 esp_gmf_err_t Audio_Resume_Play(void)
 {
+    if (handle == NULL) return ESP_GMF_ERR_INVALID_ARG;
     esp_gmf_err_t err = esp_audio_simple_player_resume(handle);
     Audio_PA_EN();
     return err;
@@ -96,6 +99,7 @@ esp_gmf_err_t Audio_Resume_Play(void)
 
 esp_gmf_err_t Audio_Pause_Play(void)
 {
+    if (handle == NULL) return ESP_GMF_ERR_INVALID_ARG;
     esp_gmf_err_t err = esp_audio_simple_player_pause(handle);
     Audio_PA_DIS();
     return err;
@@ -103,6 +107,7 @@ esp_gmf_err_t Audio_Pause_Play(void)
 
 esp_asp_state_t Audio_Get_Current_State(void) 
 {
+    if (handle == NULL) return ESP_ASP_STATE_NONE;
     esp_asp_state_t state;
     esp_gmf_err_t err = esp_audio_simple_player_get_state(handle, &state);
     if (err != ESP_GMF_ERR_OK) {

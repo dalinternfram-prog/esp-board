@@ -31,11 +31,11 @@ public:
 class EspCrypto : public core::ICrypto {
 public:
     std::optional<core::Bytes> generatePublicKey() override {
-        return encryption::ecdh_step1_generate_my_key(backend_);
+        return ecdh_.generatePublicKey(backend_);
     }
 
     std::optional<core::Bytes> computeSharedSecret(const core::Bytes& peer_public_key) override {
-        return encryption::ecdh_step2_compute_shared_secret(peer_public_key, backend_);
+        return ecdh_.computeSharedSecret(peer_public_key, backend_);
     }
 
     std::optional<core::Bytes> encrypt(const core::Bytes& plaintext,
@@ -49,7 +49,8 @@ public:
     }
 
 private:
-    EspCryptoBackend backend_;
+    EspCryptoBackend       backend_;
+    encryption::EcdhHandshake ecdh_;
 };
 
 } // namespace adapters

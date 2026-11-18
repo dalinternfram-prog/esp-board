@@ -249,14 +249,19 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
         return;
     }
 
+    bool write_failed = false;
     auto copyRange = [&](long from, long to) {
         fseek(src, from, SEEK_SET);
         long remaining = to - from;
-        while (remaining > 0) {
+        while (remaining > 0 && !write_failed) {
             size_t n = std::min<size_t>(remaining, BUF_SIZE);
             size_t r = fread(buf.get(), 1, n, src);
             if (r == 0) break;
-            fwrite(buf.get(), 1, r, dst);
+            size_t w = fwrite(buf.get(), 1, r, dst);
+            if (w != r) {
+                write_failed = true;
+                break;
+            }
             remaining -= r;
         }
     };
@@ -280,9 +285,13 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
         // 2. The insertion hole/gap: filled with zeros
         std::vector<uint8_t> zeros(std::min<size_t>(shiftDistance, BUF_SIZE), 0x00);
         size_t holeLeft = shiftDistance;
-        while (holeLeft > 0) {
+        while (holeLeft > 0 && !write_failed) {
             size_t n = std::min(holeLeft, zeros.size());
-            fwrite(zeros.data(), 1, n, dst);
+            size_t w = fwrite(zeros.data(), 1, n, dst);
+            if (w != n) {
+                write_failed = true;
+                break;
+            }
             holeLeft -= n;
         }
         // 3. The shifted payload: [actualStart, actualEnd)
@@ -294,11 +303,22 @@ void RandomAccessFile::shiftBytes(size_t shiftDistance, bool left, long long sta
     }
 
     fflush(dst);
+    if (ferror(dst)) {
+        write_failed = true;
+    }
     fclose(src);
     fclose(dst);
 
-    // Atomic replace on LittleFS
-    unlink(filePath.c_str());
+    if (write_failed) {
+        // Keep the original file untouched and drop the partial temp file.
+        LOG_E(TAG, "shiftBytes write failed; keeping original '%s'", filePath.c_str());
+        unlink(tmpPath.c_str());
+        openInternal();
+        return;
+    }
+
+    // Atomic replace: rename() overwrites the destination on POSIX and
+    // LittleFS, so a power loss cannot leave the file missing.
     rename(tmpPath.c_str(), filePath.c_str());
 
     // Reopen handle for caller

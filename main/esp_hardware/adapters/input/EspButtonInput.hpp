@@ -20,11 +20,13 @@ public:
         handler_ = handler;
         ctx_ = ctx;
 
-        // The driver forwards this pointer back as the callback's user_data.
-        if (key_module_init(this) != ESP_OK) {
+        // Register the callback first, then start the scan task (the task can
+        // deliver events from the very first scan).
+        if (key_register_callback(&espKeyHandler) != ESP_OK) {
             return false;
         }
-        return key_register_callback(&espKeyHandler) == ESP_OK;
+        // The driver forwards this pointer back as the callback's user_data.
+        return key_module_init(this) == ESP_OK;
     }
 
     void handle(key_id_t id, key_event_t event) {

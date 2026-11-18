@@ -30,4 +30,8 @@ private: // Keeps encoder implementation details private.
     int channelCount_; // Stores the configured channel count.
     int bitsPerChannel_; // Stores the PCM input bit depth.
     int frameSize_; // Stores samples per channel for each frame.
+
+    // Reusable scratch buffers (avoid per-frame heap churn).
+    std::vector<float> float_scratch_;
+    std::vector<unsigned char> packet_scratch_;
 };

@@ -48,9 +48,23 @@ std::optional<std::vector<uint8_t>> aes_gcm_decrypt(const std::vector<uint8_t>& 
                                                     std::vector<uint8_t> key,
                                                     CryptoBackend& backend);
 
-// ECDH P-256 handshake.
-std::optional<std::vector<uint8_t>> ecdh_step1_generate_my_key(CryptoBackend& backend);
-std::optional<std::vector<uint8_t>> ecdh_step2_compute_shared_secret(
-    const std::vector<uint8_t>& peer_public_key, CryptoBackend& backend);
+// ECDH P-256 handshake. Owns the PSA key pair; generatePublicKey() and the
+// destructor destroy any previous key so aborted handshakes cannot leak PSA
+// key slots.
+class EcdhHandshake {
+public:
+    EcdhHandshake() = default;
+    ~EcdhHandshake();
+
+    EcdhHandshake(const EcdhHandshake&) = delete;
+    EcdhHandshake& operator=(const EcdhHandshake&) = delete;
+
+    std::optional<std::vector<uint8_t>> generatePublicKey(CryptoBackend& backend);
+    std::optional<std::vector<uint8_t>> computeSharedSecret(
+        const std::vector<uint8_t>& peer_public_key, CryptoBackend& backend);
+
+private:
+    psa_key_id_t key_id_ = 0;
+};
 
 } // namespace encryption

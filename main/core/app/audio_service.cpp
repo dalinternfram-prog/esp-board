@@ -20,7 +20,7 @@ constexpr uint32_t kLoopDelayMs   = 10;
 constexpr uint32_t kTaskStack     = 39152;
 constexpr int      kTaskPriority  = 5;
 constexpr int      kTaskCore      = 1;
-constexpr int      kStopTimeoutMs = 200;
+constexpr int      kStopTimeoutMs = 500;  // > i2s_channel_read timeout + margin
 
 struct AudioState {
     std::atomic<core::ITaskRunner::TaskId> task{nullptr};
@@ -41,8 +41,15 @@ void audio_task(void* /*arg*/) {
     core::IAppServices& svc = *services();
     svc.log.logf(core::LogLevel::Info, "Audio task created & initializing");
 
-    if (!svc.audio_in.open() || !svc.audio_encoder.init()) {
-        svc.log.logf(core::LogLevel::Error, "Audio pipeline init failed");
+    if (!svc.audio_in.open()) {
+        svc.log.logf(core::LogLevel::Error, "Audio input open failed");
+        state().task.store(nullptr);
+        svc.tasks.exitCurrentTask();
+        return;
+    }
+    if (!svc.audio_encoder.init()) {
+        svc.log.logf(core::LogLevel::Error, "Audio encoder init failed");
+        svc.audio_in.close();   // release the driver + PSRAM DMA buffer
         state().task.store(nullptr);
         svc.tasks.exitCurrentTask();
         return;

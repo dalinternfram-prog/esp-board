@@ -51,6 +51,7 @@ void MediaController::speechTrampoline(core::SpeechEvent event, int command, voi
 }
 
 void MediaController::onButton(core::ButtonId id, core::ButtonEvent event) {
+    std::lock_guard<std::mutex> lock(mutex_);
     perform(actionFor(id, event));
 }
 
@@ -112,7 +113,7 @@ void MediaController::togglePlayPause() {
             playCurrent();
             break;
         case core::MediaState::Finished:
-            indicator_.setMode(core::IndicatorMode::Idle);
+            playCurrent();   // replay the finished track instead of sticking on Idle
             break;
         case core::MediaState::Error:
             break;
@@ -147,6 +148,7 @@ void MediaController::changeVolume(int delta) {
 }
 
 void MediaController::onSpeech(core::SpeechEvent event, int command) {
+    std::lock_guard<std::mutex> lock(mutex_);
     switch (event) {
         case core::SpeechEvent::Awake:
             if (player_.state() == core::MediaState::Running) {

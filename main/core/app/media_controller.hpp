@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,9 @@ private:
     std::vector<std::string> tracks_;
     std::size_t index_ = 0;
     bool resume_after_voice_ = false;
+
+    // Serializes button (key task) and speech (detect task) entry points.
+    std::mutex mutex_;
 };
 
 } // namespace core::app
