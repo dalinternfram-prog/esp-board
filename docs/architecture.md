@@ -21,13 +21,14 @@ main/
     io/                path join, stdio file store, random-access file
     fs/                directory lister
     input/             button debounce / long-press state machine
+    net/               POSIX UDP socket helpers (getaddrinfo/sendto/recvfrom)
     util/              MAC / device-id formatting
   esp_hardware/        the ONLY folder allowed to touch ESP-IDF
     hardware.hpp/.cpp  boot(const core::AudioConfig&) + board bring-up
     adapters/          port implementations (incl. media/UI inputs)
     drivers/           bsp, i2s, buttons, led, speech, io expander
     wifi/              WiFi manager / provisioning
-    net/kcp/           UDP datagram IO (KCP session is in general/)
+    net/               UDP DatagramIo adapter (POSIX socket code is in general/net)
     storage/           LittleFS mount + OTA backend
 ```
 
@@ -70,7 +71,7 @@ compiled from `core/` and `general/`:
 
 | Logic | Lives in | Hardware counterpart |
 |---|---|---|
-| KCP session, tuning, reassembly, liveness | `general/kcp/KcpSession` | `net/kcp/EspUdpDatagramIo` |
+| KCP session, tuning, reassembly, liveness | `general/kcp/KcpSession` | `net/EspUdpDatagramIo` (over `general/net` POSIX sockets) |
 | playlist, volume clamp, play/pause, voice feedback | `core/app/MediaController` | `hardware.cpp` + drivers |
 | button debounce / short / long press | `general/input/ButtonStateMachine` | `drivers/button` |
 | directory scan + extension filter | `general/fs/DirectoryLister` | `drivers/bsp` |
@@ -147,7 +148,7 @@ directory (the CMake glob has no `CONFIGURE_DEPENDS`).
   `EspNvsStorage`, `EspFileStore`, `EspFirmwareUpdater`,
   `EspI2sAudioSource`, `OpusEncoder`, `EspMediaPlayer`, `EspIndicator`,
   `EspButtonInput`, `EspSpeechInput`, `EspSdPlaylist`.
-* `drivers/`, `wifi/`, `net/kcp/`, `storage/` - the ESP-IDF implementation
+* `drivers/`, `wifi/`, `net/`, `storage/` - the ESP-IDF implementation
   details behind those adapters.
 
 ## Composition root

@@ -1,11 +1,14 @@
 #pragma once
 
-// Adapter: DatagramIo over the ESP-IDF/POSIX UDP socket helpers.
+// Adapter: DatagramIo over the portable POSIX UDP socket helpers.
+// All socket logic lives in general/net/udp_socket.hpp; this class only binds
+// the general socket code to the core::ITransport/DatagramIo seam. A 4G modem
+// would replace this with an AT-command implementation of the same interface.
 
 #include <cstddef>
 
 #include "general/kcp/datagram_io.hpp"
-#include "socket/create-udp-socket.hpp"
+#include "general/net/udp_socket.hpp"
 
 namespace adapters {
 
@@ -26,7 +29,7 @@ public:
     bool isOpen() const { return conn_.is_valid(); }
 
 private:
-    Network::socket::UdpConnection conn_;
+    general::net::UdpConnection conn_;
 };
 
 } // namespace adapters

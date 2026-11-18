@@ -12,7 +12,7 @@ CXX=${CXX:-g++}
 CC=${CC:-gcc}
 fail=0
 
-PURE_SOURCES="main/core/app/media_controller.cpp main/core/app/net_manager.cpp main/core/app/session_factory.cpp"
+PURE_SOURCES="main/core/app/media_controller.cpp main/core/app/net_manager.cpp main/core/app/session_factory.cpp main/esp_hardware/net/esp_udp_datagram_io.cpp"
 
 for f in $PURE_SOURCES $(find main/core/audio main/core/session main/general/io main/general/fs main/general/input main/general/kcp -name '*.cpp' | sort); do
     if "$CXX" -std=c++17 -Imain -fsyntax-only "$f" 2>/tmp/host_check.err; then
