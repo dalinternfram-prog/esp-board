@@ -198,6 +198,11 @@ replaces that thin wrapper.
       NetState/MediaController mutexes, graceful task shutdown, ECDH key
       ownership (`EcdhHandshake`), OTA `markAppValid()`, Opus scratch buffers,
       atomic `shiftBytes()` replace.
+- [x] Second robustness pass: tick-clock `receive(now)` + underflow guard,
+      WaitAck timeout with key retention, task-handle publication races,
+      requestId-echoing acks after real init, 0-based frame timestamps,
+      correct AudioPacket codec/rate/channels, SNTP, connected UDP,
+      legacy/new file-list decoding, proto CMake excludes lib/main.cpp.
 - [ ] Next: 4G adapter implementing `ILink`/`ITransport`;
       `IFirmwareUpdater::applyFromUrl()` streaming.
 

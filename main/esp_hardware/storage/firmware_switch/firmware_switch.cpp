@@ -175,7 +175,11 @@ bool FirmwareSwitch::writeOtaData(const void* data, size_t size) { // Method to 
 
     esp_err_t ret = esp_ota_write(m_ota_handle, (const void*)data, size); // Write data chunk to flash memory
     if (ret != ESP_OK) { // Check if write operation returned an error
-        ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(ret)); // Log error details
+        ESP_LOGE(TAG, "esp_ota_write failed: %s; aborting OTA session", esp_err_to_name(ret));
+        // Abort so a failed download cannot lock the updater until reboot.
+        esp_ota_abort(m_ota_handle);
+        m_ota_handle = 0;
+        m_is_updating = false;
         return false; // Return failure status
     }
 
