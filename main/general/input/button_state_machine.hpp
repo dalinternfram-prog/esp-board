@@ -1,7 +1,9 @@
 #pragma once
 
-// Portable button debounce + short/long-press state machine.
-// The hardware layer only samples the pin and feeds (pressed, now_ms).
+// Portable short/long-press state machine.
+// Debounce is the caller's sampling interval (the ESP driver polls every
+// 100 ms, which is well above the mechanical bounce time); this class only
+// derives events from the sampled level and timestamp.
 
 #include <cstdint>
 
