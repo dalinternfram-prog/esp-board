@@ -6,6 +6,7 @@
 
 #include "interface.hpp"
 
+#include "esp_log.h"
 #include "mic_speech.h"
 
 namespace adapters {
@@ -21,7 +22,14 @@ public:
         handler_ = handler;
         ctx_ = ctx;
         instance() = this;
-        return Speech_register_callback(&espSpeechHandler) == ESP_OK;
+
+        // Speech is deliberately disabled for now:
+        //  * Speech_Init() requires a "model" partition (not in partitions.csv)
+        //  * its feed task would fight AudioCaptureDriver for the same I2S RX
+        // Re-enable by provisioning the model partition and routing both
+        // consumers through one capture stream.
+        ESP_LOGW("speech", "Speech input disabled (no model partition / shared I2S)");
+        return false;
     }
 
     void handle(esp_sr_rec_event_t event, esp_sr_evt_data_t data) {

@@ -20,14 +20,16 @@ namespace adapters {
 class EspWifiLink : public core::ILink {
 public:
     bool start() override {
-        // No RTC: once WiFi comes up, sync wall-clock time so nowUnixMs() is
-        // real instead of 1970 (RecordAck timestamps depend on it).
+        wifi::init();   // creates esp_netif + the default event loop
+
+        // Only now is esp_netif_sntp_init() valid: SNTP requires esp_netif and
+        // the default event loop to already exist (else it silently fails and
+        // nowUnixMs() stays at 1970).
         static bool sntp_started = false;
         if (!sntp_started) {
             esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
             sntp_started = (esp_netif_sntp_init(&config) == ESP_OK);
         }
-        wifi::init();
         return true;
     }
 

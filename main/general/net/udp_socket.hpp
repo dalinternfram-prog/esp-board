@@ -17,7 +17,7 @@
 
 namespace general::net {
 
-static const char* TAG = "UDP";
+inline constexpr const char* TAG = "UDP";
 
 // Socket handle + resolved destination.
 struct UdpConnection {

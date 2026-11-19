@@ -38,8 +38,8 @@ void SessionManager::logf(LogLevel level, const char* fmt, ...) {
 }
 
 void SessionManager::start() {
-    state_ = State::Idle;
-    epoch_ = 0;
+    state_.store(State::Idle);
+    epoch_.store(0);
     aes_key_.clear();
     handshake_pkt_.clear();
     retry_count_ = 0;
@@ -65,7 +65,7 @@ void SessionManager::start() {
 
 void SessionManager::stop() {
     transport_.close();
-    state_ = State::Idle;
+    state_.store(State::Idle);
 }
 
 int SessionManager::send(const Bytes& app_message) {
@@ -112,7 +112,7 @@ void SessionManager::tick() {
 
         // 1b. KCP dead_link: retransmission limit exhausted -> reconnect early
         // instead of waiting for the full server-timeout window.
-        if (state_ != State::Idle && transport_.isDead()) {
+        if (state_.load() != State::Idle && transport_.isDead()) {
             resetSession("dead link");
             transport_ok = transport_.isOpen();   // reopen may have failed
         }
@@ -129,11 +129,11 @@ void SessionManager::tick() {
         }
 
         // 4. Server liveness: no datagram at all for kServerTimeoutMs.
-        if (state_ == State::Established) {
+        if (state_.load() == State::Established) {
             const uint32_t last_rx = transport_.lastRxMs();
-            // Guard the subtraction: last_rx can be newer than the tick's
-            // `now` if it was sampled later (uint32 underflow => bogus reset).
-            if (last_rx != 0 && now > last_rx && (now - last_rx) > kServerTimeoutMs) {
+            // int32 comparison is wraparound-safe (49.7-day uint32 rollover).
+            if (last_rx != 0 &&
+                static_cast<int32_t>(now - last_rx) > static_cast<int32_t>(kServerTimeoutMs)) {
                 logf(LogLevel::Warn, "Server silent for %u ms; reconnecting",
                      static_cast<unsigned>(now - last_rx));
                 resetSession("server timeout");
@@ -151,7 +151,7 @@ void SessionManager::tick() {
 
     // 6. Encrypt & transmit (or drop when offline).
     if (!sending_.empty()) {
-        const bool online = transport_ok && link_.isUp() && state_ == State::Established;
+        const bool online = transport_ok && link_.isUp() && state_.load() == State::Established;
         if (online) {
             for (const auto& pkt : sending_) {
                 auto encrypted = crypto_.encrypt(pkt, aes_key_);
@@ -173,14 +173,20 @@ void SessionManager::tick() {
 
 void SessionManager::handleHandshake(uint32_t now_ms) {
     if (!link_.isUp()) {
-        if (state_ != State::Idle) {
+        if (state_.load() != State::Idle) {
             resetSession("link down");
         }
         return;
     }
 
-    switch (state_) {
+    switch (state_.load()) {
     case State::Idle: {
+        // P-256 keygen is expensive and sendRaw() fails fast (ICMP
+        // unreachable) while the server is down; retry at the handshake
+        // interval instead of every 10 ms tick.
+        if (last_attempt_ms_ != 0 && (now_ms - last_attempt_ms_) < kHandshakeBaseRetryMs) {
+            return;
+        }
         auto pub = crypto_.generatePublicKey();
         if (!pub.has_value() || pub->empty()) {
             logf(LogLevel::Error, "ECDH key generation failed");
@@ -192,11 +198,12 @@ void SessionManager::handleHandshake(uint32_t now_ms) {
         std::memcpy(handshake_pkt_.data() + sizeof(uint32_t), pub->data(), pub->size());
         if (transport_.sendRaw(handshake_pkt_) < 0) {
             logf(LogLevel::Warn, "Handshake send failed; staying in Idle");
+            last_attempt_ms_ = now_ms;   // throttle the next key generation
             return;
         }
         last_attempt_ms_ = now_ms;
         retry_count_ = 1;
-        state_ = State::WaitAck;
+        state_.store(State::WaitAck);
         waitack_start_ms_ = now_ms;
         logf(LogLevel::Info, "Handshake dispatched (conv=%u)", static_cast<unsigned>(conv));
         break;
@@ -227,20 +234,20 @@ void SessionManager::handleHandshake(uint32_t now_ms) {
 
 void SessionManager::handleIncoming(Bytes message, uint32_t now_ms) {
     (void)now_ms;
-    if (state_ == State::WaitAck) {
+    if (state_.load() == State::WaitAck) {
         auto secret = crypto_.computeSharedSecret(message);
         if (secret.has_value() && !secret->empty()) {
             aes_key_ = std::move(*secret);
             handshake_pkt_.clear();
             retry_count_ = 0;
-            state_ = State::Established;
+            state_.store(State::Established);
             logf(LogLevel::Info, "Handshake complete; AES-256-GCM key established");
         } else {
             logf(LogLevel::Error, "Corrupt handshake response");
         }
         return;
     }
-    if (state_ == State::Established) {
+    if (state_.load() == State::Established) {
         auto decrypted = crypto_.decrypt(message, aes_key_);
         if (!decrypted.has_value()) {
             logf(LogLevel::Error, "Failed to decrypt incoming packet");
@@ -253,7 +260,7 @@ void SessionManager::handleIncoming(Bytes message, uint32_t now_ms) {
 
 void SessionManager::resetSession(const char* reason) {
     logf(LogLevel::Warn, "Session reset (%s)", reason);
-    state_ = State::Idle;
+    state_.store(State::Idle);
     aes_key_.clear();
     handshake_pkt_.clear();
     retry_count_ = 0;
@@ -267,7 +274,7 @@ void SessionManager::resetSession(const char* reason) {
         // Link is down: no socket/DNS work now; tick() reopens once isUp().
         transport_.close();
     }
-    epoch_++;
+    epoch_.fetch_add(1);
     last_open_attempt_ms_ = clock_.nowMs();
 }
 

@@ -120,6 +120,7 @@ void MediaController::togglePlayPause() {
             playCurrent();   // replay the finished track instead of sticking on Idle
             break;
         case core::MediaState::Error:
+            playCurrent();   // retry instead of leaving the user stuck
             break;
     }
 }

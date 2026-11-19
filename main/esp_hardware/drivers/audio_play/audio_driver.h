@@ -21,6 +21,7 @@ extern "C" {
 #define Volume_MAX  100
 
 void Audio_Play_Init(void);
+bool Audio_Player_Is_Ready(void);
 void Volume_Adjustment(uint8_t Vol);
 uint8_t get_audio_volume(void);
 

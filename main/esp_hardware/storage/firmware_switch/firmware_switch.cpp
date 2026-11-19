@@ -91,7 +91,8 @@ FirmwareSwitch::FirmwareSwitch() // Constructor definition initializing member f
 
 FirmwareSwitch::~FirmwareSwitch() { // Destructor definition for clean lifecycle exit
     if (m_is_updating && m_ota_handle != 0) { // Check if an OTA session was left open unintentionally
-        esp_ota_end(m_ota_handle);   // Abort/close active OTA session to prevent memory/handle leaks
+        // Abort, not end: esp_ota_end would try to validate the incomplete image.
+        esp_ota_abort(m_ota_handle);
     }
 }
 

@@ -119,8 +119,10 @@ esp_err_t bsp_codec_adc_init(int sample_rate)
     };
     record_dev = esp_codec_dev_new(&dev_cfg);
 
+    // channel=2 / 32-bit describe the I2S slot layout the 4 ES7210 mics are
+    // packed into (4 x 16-bit inside 2 x 32-bit slots) - keep those fixed.
     esp_codec_dev_sample_info_t fs = {
-        .sample_rate = 16000,
+        .sample_rate = sample_rate,
         .channel = 2,
         .bits_per_sample = 32,
     };
@@ -381,8 +383,15 @@ esp_err_t esp_audio_play(const int16_t* data, int length, uint32_t ticks_to_wait
 
     int out_length= length;
     int audio_time = 1;
-    audio_time *= (16000 / s_play_sample_rate);
-    audio_time *= (2 / s_play_channel_format);
+    // 16000/48000 == 0 in integer math, which would divide by zero below.
+    // Only upsample (duplicate samples) when the codec runs below 16 kHz;
+    // downsampling needs a real resampler (not implemented).
+    if (s_play_sample_rate > 0 && s_play_sample_rate < 16000) {
+        audio_time = 16000 / s_play_sample_rate;
+    }
+    if (s_play_channel_format == 1) {
+        audio_time *= 2;   // duplicate mono into both slots
+    }
 
     int *data_out = NULL;
     if (s_bits_per_chan != 32) {
@@ -475,7 +484,11 @@ esp_err_t esp_board_init(uint32_t sample_rate, int channel_format, int bits_per_
 {
     /*!< Initialize I2C bus, used for audio codec*/
 
-    i2c_master_init();
+    esp_err_t ret = i2c_master_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "i2c_master_init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     s_play_sample_rate = sample_rate;
 
     if (channel_format != 2 && channel_format != 1) {
@@ -490,9 +503,17 @@ esp_err_t esp_board_init(uint32_t sample_rate, int channel_format, int bits_per_
     }
     s_bits_per_chan = bits_per_chan;
 // Forward the caller's AudioConfig instead of hardcoding 16000/2/32.
-    bsp_i2s_init(I2S_NUM_1, (uint32_t)sample_rate, channel_format, bits_per_chan);
+    ret = bsp_i2s_init(I2S_NUM_1, (uint32_t)sample_rate, channel_format, bits_per_chan);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "bsp_i2s_init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     // Because record and play use the same i2s.
-    bsp_codec_init((int)sample_rate, (int)sample_rate, channel_format, bits_per_chan);
+    ret = bsp_codec_init((int)sample_rate, (int)sample_rate, channel_format, bits_per_chan);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "bsp_codec_init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     /* Initialize PA */
      /*gpio_config_t  io_conf;

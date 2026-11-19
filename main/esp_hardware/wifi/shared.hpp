@@ -8,7 +8,7 @@
 
 namespace wifi {
 
-static const char* TAG = "WIFI__";
+inline constexpr const char* TAG = "WIFI__";
 
 inline void init() {
     wifi::begin();

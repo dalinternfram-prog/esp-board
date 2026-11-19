@@ -15,7 +15,7 @@
 
 namespace encryption {
 
-static const char* TAG = "AES_GCM";
+inline constexpr const char* TAG = "AES_GCM";
 
 constexpr size_t AES_KEY_BYTES = 32;   // 256-bit AES key
 constexpr size_t GCM_NONCE_BYTES = 12; // standard 12-byte nonce (IV)

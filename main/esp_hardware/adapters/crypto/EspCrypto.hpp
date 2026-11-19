@@ -13,14 +13,9 @@ namespace adapters {
 class EspCryptoBackend : public encryption::CryptoBackend {
 public:
     bool init() override {
-        static bool initialized = false;
-        if (!initialized) {
-            if (psa_crypto_init() != PSA_SUCCESS) {
-                return false;
-            }
-            initialized = true;
-        }
-        return true;
+        // psa_crypto_init() is idempotent and safe to call repeatedly, so no
+        // local state is needed (and no cross-task race on a cached flag).
+        return psa_crypto_init() == PSA_SUCCESS;
     }
 
     void fillRandom(uint8_t* output, std::size_t len) override {

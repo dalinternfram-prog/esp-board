@@ -11,6 +11,10 @@ void tca9555_driver_init(void)
 
     i2c_master_bus_handle_t i2c_bus = esp_ret_i2c_handle();
     esp_err_t ret = esp_io_expander_new_i2c_tca95xx_16bit(i2c_bus, ESP_IO_EXPANDER_I2C_TCA9555_ADDRESS_000, &io_expander);
+    if (ret != ESP_OK || io_expander == NULL) {
+        ESP_LOGE("tca9555", "Failed to create IO expander: %d", ret);
+        return;
+    }
 
    /* Test output level function */
    ret = esp_io_expander_set_dir(io_expander, (IO_EXPANDER_PIN_NUM_0 | IO_EXPANDER_PIN_NUM_1 | IO_EXPANDER_PIN_NUM_5 | IO_EXPANDER_PIN_NUM_6 | IO_EXPANDER_PIN_NUM_8), IO_EXPANDER_OUTPUT);

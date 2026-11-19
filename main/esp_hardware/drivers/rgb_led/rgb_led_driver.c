@@ -77,9 +77,13 @@ void _set_single_led_color(RGB_example_color_t color ,uint32_t led_index)
     /*
     
     */
-    ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, led_index, current_color.r, current_color.g, current_color.b));
+    if (led_strip_set_pixel(led_strip, led_index, current_color.r, current_color.g, current_color.b) != ESP_OK) {
+        ESP_LOGW(TAG, "led_strip_set_pixel failed");
+    }
     /* Refresh the strip to send data */
-    ESP_ERROR_CHECK(led_strip_refresh(led_strip));
+    if (led_strip_refresh(led_strip) != ESP_OK) {
+        ESP_LOGW(TAG, "led_strip_refresh failed");
+    }
 }
 
 //100ms scan
@@ -93,7 +97,9 @@ void _example_playing(bool *reset)
         time_count = 0;
         led_num = 0;
         *reset = 0;
-        ESP_ERROR_CHECK(led_strip_clear(led_strip));
+        if (led_strip_clear(led_strip) != ESP_OK) {
+            ESP_LOGW(TAG, "led_strip_clear failed");
+        }
     }
 
     time_count++;
@@ -138,7 +144,9 @@ void _example_esp_sr_rec()
         } 
         else 
         {
-            ESP_ERROR_CHECK(led_strip_clear(led_strip));
+            if (led_strip_clear(led_strip) != ESP_OK) {
+                ESP_LOGW(TAG, "led_strip_clear failed");
+            }
         }
 
         led_on_off = !led_on_off;
@@ -164,8 +172,11 @@ void _RGB_Example(void *arg)
             {
                 case RGB_CMD_SET_MODE:
                     RGB_mode = msg.param.mode;
+                    reset_playing_color = 1;   // restart the playing animation cleanly
                     //ESP_LOGI(TAG, "收到消息: 模式=%d", msg.param.mode);
-                    ESP_ERROR_CHECK(led_strip_clear(led_strip));
+                    if (led_strip_clear(led_strip) != ESP_OK) {
+                        ESP_LOGW(TAG, "led_strip_clear failed");
+                    }
                     if(RGB_mode == RGB_MODE_IDLE)
                     {
                         for (int i = 0; i < LED_STRIP_LED_COUNT; i++) {

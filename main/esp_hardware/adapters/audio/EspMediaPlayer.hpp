@@ -12,7 +12,7 @@ class EspMediaPlayer : public core::IMediaPlayer {
 public:
     bool init() override {
         Audio_Play_Init();
-        return true;
+        return Audio_Player_Is_Ready();   // false when the GMF player failed
     }
 
     bool play(const std::string& url) override {

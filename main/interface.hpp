@@ -3,7 +3,7 @@
 // Platform-agnostic ports (interfaces) for the application core.
 // IMPORTANT: no ESP-IDF / FreeRTOS / KCP / WiFi headers may be included here.
 // Implementations live in main/esp_hardware/* and are wired in the composition
-// root (main/esp_hardware/app_context.hpp).
+// root (main/app_context.hpp).
 
 #include <cstdarg>
 #include <cstddef>

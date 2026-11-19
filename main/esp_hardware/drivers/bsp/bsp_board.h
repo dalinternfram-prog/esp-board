@@ -99,8 +99,8 @@ extern "C" {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 
 #define I2S_CONFIG_DEFAULT(sample_rate, channel_fmt, bits_per_chan) { \
-        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(16000), \
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(32, I2S_SLOT_MODE_STEREO), \
+        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate), \
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bits_per_chan, channel_fmt), \
         .gpio_cfg = { \
             .mclk = GPIO_I2S_MCLK, \
             .bclk = GPIO_I2S_SCLK, \
@@ -114,9 +114,9 @@ extern "C" {
 
 #define I2S_CONFIG_DEFAULT(sample_rate, channel_fmt, bits_per_chan) { \
     .mode                   = I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX, \
-    .sample_rate            = 16000, \
-    .bits_per_sample        = I2S_BITS_PER_SAMPLE_32BIT, \
-    .channel_format         = I2S_CHANNEL_FMT_RIGHT_LEFT, \
+    .sample_rate            = sample_rate, \
+    .bits_per_sample        = bits_per_chan == 16 ? I2S_BITS_PER_SAMPLE_16BIT : I2S_BITS_PER_SAMPLE_32BIT, \
+    .channel_format         = channel_fmt, \
     .communication_format   = I2S_COMM_FORMAT_STAND_I2S, \
     .intr_alloc_flags       = ESP_INTR_FLAG_LEVEL1, \
     .dma_buf_count          = 6, \

@@ -14,10 +14,13 @@ ButtonEvent ButtonStateMachine::update(bool pressed, uint32_t now_ms) {
         press_start_ms_ = now_ms;
         long_triggered_ = false;
     } else if (!pressed_ && last_pressed_) {
-        // Released: a short press only if the long press did not fire.
-        const uint32_t press_time = now_ms - press_start_ms_;
-        if (press_time < long_press_ms_ && !long_triggered_) {
-            event = ButtonEvent::ShortPress;
+        // Released. If the threshold was crossed exactly on this sample (the
+        // hold branch never ran), still report LongPress - never drop a press.
+        if (!long_triggered_) {
+            const uint32_t press_time = now_ms - press_start_ms_;
+            event = (press_time >= long_press_ms_)
+                        ? ButtonEvent::LongPress
+                        : ButtonEvent::ShortPress;
         }
     } else if (pressed_ && !long_triggered_) {
         // Held down: fire the long press exactly once.

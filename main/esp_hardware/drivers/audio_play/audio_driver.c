@@ -136,6 +136,11 @@ void Audio_Play_Init(void)
     pipeline_init();
 }
 
+bool Audio_Player_Is_Ready(void)
+{
+    return handle != NULL;
+}
+
 void Volume_Adjustment(uint8_t Vol)
 {
     if(Vol > Volume_MAX )

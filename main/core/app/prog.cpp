@@ -42,7 +42,7 @@ void handle_incoming(const core::Bytes& packet, core::IAppServices& svc,
                          "Record STOP (requestId=%u)",
                          static_cast<unsigned>(info.requestId));
             // Always ack (including already-stopped).
-            AudioService::stop(info.requestId);
+            AudioService::stop(svc, info.requestId);
         }
         return;
     }
@@ -114,7 +114,8 @@ void app_run_loop(void* arg) {
             // A new server session must not inherit a running capture: the
             // server has to send a fresh START command after every reconnect.
             if (AudioService::is_running()) {
-                AudioService::stop();
+                // Quiet stop: there is no session to ack against right now.
+                AudioService::stop(*svc, 0, /*ack=*/false);
                 svc->log.logf(core::LogLevel::Info, "Audio stopped after session reset");
             }
         }

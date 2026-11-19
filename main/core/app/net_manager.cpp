@@ -51,12 +51,11 @@ void network_worker_task(void* /*arg*/) {
 
     svc.log.logf(core::LogLevel::Info, "Network worker task started");
     while (st.running.load()) {
-        {
-            // Lock only around tick(); never across the delay below.
-            std::lock_guard<std::mutex> lock(st.mutex);
-            if (st.session) {
-                st.session->tick();
-            }
+        // No NetState::mutex here: SessionManager has its own tx/rx locks and
+        // atomic state_/epoch_. Locking the whole tick() would stall send()/
+        // poll() callers during DNS lookups or crypto work.
+        if (st.session) {
+            st.session->tick();
         }
         svc.tasks.delayMs(kWorkerTickMs);
     }
