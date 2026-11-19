@@ -95,11 +95,13 @@ compiled from `core/` and `general/`:
 * `main/` (`app_context`, `main.cpp`) is the composition root and may include
   everything.
 
-`tools/host_check.sh` (host compiler):
+`tools/host_check.sh` (host compiler, C++20):
 
-* `core/app` (`media_controller`, `net_manager`, `session_factory`),
-  `core/audio`, `core/session` compile with `-fsyntax-only` on the host.
+* `core/app` (incl. `prog.cpp` and `audio_service.cpp`), `core/audio`,
+  `core/session` compile with `-fsyntax-only` on the host using the proto
+  headers (C++20 is required by `components/proto`).
 * `general/` pure sources + `general/kcp/ikcp.c` (C99) compile on the host.
+* The POSIX UDP `DatagramIo` adapter (`esp_hardware/net`) is host-checked too.
 * `general/crypto` and `general/opus` need PSA/libopus headers, so they are
   validated by the IDF build.
 

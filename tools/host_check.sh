@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Proves that core/ compiles without ESP-IDF, and that the portable KCP core
-# is valid C.
+# Proves that the portable layers compile on the host (no ESP-IDF, no Xtensa):
+#   * core/app (prog, audio_service, net_manager, media_controller, session_factory)
+#   * core/audio, core/session
+#   * every general/ pure source + ikcp.c (C99)
+#   * the POSIX UDP DatagramIo adapter
 #
-# general/crypto and general/opus need external headers (PSA / libopus), so they
-# are validated by the IDF build; check_layers.sh keeps them free of ESP-IDF.
+# Built as C++20 because components/proto uses C++20 features (FixedString NTTP).
+# general/crypto and general/opus need PSA/libopus headers, so they are
+# validated by the IDF build; check_layers.sh keeps them free of ESP-IDF.
 
 set -u
 cd "$(dirname "$0")/.."
@@ -12,10 +16,24 @@ CXX=${CXX:-g++}
 CC=${CC:-gcc}
 fail=0
 
-PURE_SOURCES="main/core/app/media_controller.cpp main/core/app/net_manager.cpp main/core/app/session_factory.cpp main/esp_hardware/net/esp_udp_datagram_io.cpp"
+CXXFLAGS=(
+    -std=c++20 -Imain
+    -Icomponents/proto/lib
+    -Icomponents/proto/lib/IoT
+    -Icomponents/proto/lib/tool
+    -Icomponents/proto/lib/phone
+)
+
+PURE_SOURCES="
+main/core/app/media_controller.cpp
+main/core/app/net_manager.cpp
+main/core/app/session_factory.cpp
+main/core/app/prog.cpp
+main/core/app/audio_service.cpp
+main/esp_hardware/net/esp_udp_datagram_io.cpp"
 
 for f in $PURE_SOURCES $(find main/core/audio main/core/session main/general/io main/general/fs main/general/input main/general/kcp -name '*.cpp' | sort); do
-    if "$CXX" -std=c++17 -Imain -fsyntax-only "$f" 2>/tmp/host_check.err; then
+    if "$CXX" "${CXXFLAGS[@]}" -fsyntax-only "$f" 2>/tmp/host_check.err; then
         echo "[ok]   host compile: $f"
     else
         echo "[FAIL] host compile: $f"
@@ -34,6 +52,5 @@ if [ -f main/general/kcp/ikcp.c ]; then
     fi
 fi
 
-[ "$fail" -eq 0 ] && echo "[ok]   core/ is portable"
+[ "$fail" -eq 0 ] && echo "[ok]   core/ + general/ are portable"
 exit "$fail"
-
