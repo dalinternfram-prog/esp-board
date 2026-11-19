@@ -7,8 +7,10 @@
 
 #include "interface.hpp"
 
+#include <atomic>
 #include <cstring>
 
+#include "esp_netif_sntp.h"
 #include "esp_timer.h"
 #include "WiFiManager.hpp"
 #include "wifi/shared.hpp"
@@ -18,6 +20,13 @@ namespace adapters {
 class EspWifiLink : public core::ILink {
 public:
     bool start() override {
+        // No RTC: once WiFi comes up, sync wall-clock time so nowUnixMs() is
+        // real instead of 1970 (RecordAck timestamps depend on it).
+        static bool sntp_started = false;
+        if (!sntp_started) {
+            esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+            sntp_started = (esp_netif_sntp_init(&config) == ESP_OK);
+        }
         wifi::init();
         return true;
     }
@@ -25,22 +34,25 @@ public:
     bool isUp() const override {
         // wifi_manager_get_status() is not free; cache the answer briefly.
         const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-        if (last_check_ms_ != 0 && (now - last_check_ms_) < kCacheMs) {
-            return last_state_;
+        const uint32_t last = last_check_ms_.load();
+        if (last != 0 && (now - last) < kCacheMs) {
+            return last_state_.load();
         }
-        last_check_ms_ = now;
 
         wifi_status_t status{};
-        last_state_ = wifi::getStatus(status) &&
-                      status.ip[0] != '\0' &&
-                      std::strcmp(status.ip, "0.0.0.0") != 0;
-        return last_state_;
+        const bool up = wifi::isConnected() &&
+                        wifi::getStatus(status) &&
+                        status.ip[0] != '\0' &&
+                        std::strcmp(status.ip, "0.0.0.0") != 0;
+        last_state_.store(up);
+        last_check_ms_.store(now);
+        return up;
     }
 
 private:
     static constexpr uint32_t kCacheMs = 500;
-    mutable uint32_t last_check_ms_ = 0;
-    mutable bool     last_state_ = false;
+    mutable std::atomic<uint32_t> last_check_ms_{0};
+    mutable std::atomic<bool>     last_state_{false};
 };
 
 } // namespace adapters

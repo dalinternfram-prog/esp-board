@@ -62,6 +62,7 @@ private:
     Bytes    handshake_pkt_;
     uint32_t retry_count_ = 0;
     uint32_t last_attempt_ms_ = 0;
+    uint32_t waitack_start_ms_ = 0;
     uint32_t last_open_attempt_ms_ = 0;
 
     // Outbound double buffer: producers append to incoming_, worker swaps.

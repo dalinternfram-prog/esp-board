@@ -61,7 +61,13 @@ void network_worker_task(void* /*arg*/) {
         svc.tasks.delayMs(kWorkerTickMs);
     }
 
-    st.handle.store(nullptr);
+    {
+        // Clear the handle under the mutex: start() publishes it under the same
+        // lock, so a fast-exiting task cannot erase the handle start() is about
+        // to store on the other core.
+        std::lock_guard<std::mutex> lock(st.mutex);
+        st.handle.store(nullptr);
+    }
     svc.tasks.exitCurrentTask();
 }
 

@@ -128,7 +128,7 @@ struct ITransport {
     virtual int sendRaw(const Bytes& data) = 0;
 
     // Return one complete inbound message, or nullopt when nothing is ready.
-    virtual std::optional<Bytes> receive() = 0;
+    virtual std::optional<Bytes> receive(uint32_t now_ms) = 0;
 
     // Timestamp of the last received datagram (including transport-level acks),
     // used for server liveness detection. 0 = nothing received yet.

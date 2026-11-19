@@ -11,6 +11,7 @@ namespace {
 constexpr uint32_t kHandshakeBaseRetryMs = 600;   // first handshake retry delay
 constexpr uint32_t kHandshakeMaxRetryMs  = 3000;  // handshake retry ceiling
 constexpr uint32_t kServerTimeoutMs      = 8000;  // no RX at all => server dead
+constexpr uint32_t kHandshakeTimeoutMs   = 30000; // WaitAck ceiling -> fresh keypair
 constexpr uint32_t kReopenThrottleMs     = 1000;  // retry transport.open() slowly
 constexpr size_t   kMaxOutboundQueue     = 128;   // backpressure threshold
 
@@ -43,6 +44,7 @@ void SessionManager::start() {
     handshake_pkt_.clear();
     retry_count_ = 0;
     last_attempt_ms_ = 0;
+    waitack_start_ms_ = 0;
     last_open_attempt_ms_ = 0;
 
     {
@@ -121,7 +123,7 @@ void SessionManager::tick() {
 
             // 3. Inbound processing: drain ALL reassembled messages this tick
             // so bursts cannot pile up between ticks.
-            while (auto msg = transport_.receive()) {
+            while (auto msg = transport_.receive(now)) {
                 handleIncoming(std::move(*msg), now);
             }
         }
@@ -129,7 +131,9 @@ void SessionManager::tick() {
         // 4. Server liveness: no datagram at all for kServerTimeoutMs.
         if (state_ == State::Established) {
             const uint32_t last_rx = transport_.lastRxMs();
-            if (last_rx != 0 && (now - last_rx) > kServerTimeoutMs) {
+            // Guard the subtraction: last_rx can be newer than the tick's
+            // `now` if it was sampled later (uint32 underflow => bogus reset).
+            if (last_rx != 0 && now > last_rx && (now - last_rx) > kServerTimeoutMs) {
                 logf(LogLevel::Warn, "Server silent for %u ms; reconnecting",
                      static_cast<unsigned>(now - last_rx));
                 resetSession("server timeout");
@@ -193,10 +197,16 @@ void SessionManager::handleHandshake(uint32_t now_ms) {
         last_attempt_ms_ = now_ms;
         retry_count_ = 1;
         state_ = State::WaitAck;
+        waitack_start_ms_ = now_ms;
         logf(LogLevel::Info, "Handshake dispatched (conv=%u)", static_cast<unsigned>(conv));
         break;
     }
     case State::WaitAck: {
+        if ((now_ms - waitack_start_ms_) > kHandshakeTimeoutMs) {
+            logf(LogLevel::Warn, "Handshake timed out; restarting with a fresh keypair");
+            resetSession("handshake timeout");
+            return;
+        }
         uint32_t interval = retry_count_ * kHandshakeBaseRetryMs;
         if (interval > kHandshakeMaxRetryMs) {
             interval = kHandshakeMaxRetryMs;
@@ -248,6 +258,7 @@ void SessionManager::resetSession(const char* reason) {
     handshake_pkt_.clear();
     retry_count_ = 0;
     last_attempt_ms_ = 0;
+    waitack_start_ms_ = 0;
     if (link_.isUp()) {
         // Recreate the transport with a FRESH conversation id: reusing the old
         // conv would desync KCP sequence numbers if the peer is still alive.

@@ -72,6 +72,17 @@ inline std::optional<UdpConnection> openUdpConnection(const char* host, const ch
     conn.sock = sock;
     std::memcpy(&conn.addr, res->ai_addr, res->ai_addrlen);
     conn.addr_len = res->ai_addrlen;
+
+    // Connected UDP: only datagrams from the resolved peer are delivered, so
+    // stray LAN traffic never reaches ikcp_input().
+    if (::connect(sock, reinterpret_cast<const struct sockaddr*>(&conn.addr),
+                  conn.addr_len) != 0) {
+        LOG_E(TAG, "Failed to connect UDP socket: %d", errno);
+        ::close(sock);
+        freeaddrinfo(res);
+        return std::nullopt;
+    }
+
     freeaddrinfo(res);
     return conn;
 }

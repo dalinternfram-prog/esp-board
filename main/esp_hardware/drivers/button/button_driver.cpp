@@ -15,8 +15,8 @@ static const char *TAG = "button_driver";
 // One pure state machine per key; this driver only reads GPIO and dispatches.
 static general::input::ButtonStateMachine s_keys[3];
 static key_callback_t s_callback = NULL;
-static TaskHandle_t s_task_handle = NULL;
 static std::atomic<bool> s_running{false};
+static std::atomic<bool> s_task_alive{false};
 static void *s_user_data = NULL;
 
 // 从掩码获取按键状态（按下返回true，根据硬件修改）
@@ -60,22 +60,28 @@ static void scan_timer_ccan(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    // Clean self-exit: clear the handle first so key_module_deinit() can wait
-    // on it instead of a fixed delay; then self-delete.
-    s_task_handle = NULL;
+    // Clean self-exit: drop the liveness flag first so key_module_deinit()
+    // can wait on it; then self-delete.
+    s_task_alive.store(false);
     vTaskDelete(NULL);
 }
 
 // 初始化
 esp_err_t key_module_init(void *user_data) {
-    if (s_task_handle != NULL) {
+    if (s_task_alive.load()) {
         return ESP_ERR_INVALID_STATE;   // already running
     }
     s_user_data = user_data;
     s_running.store(true);
+    s_task_alive.store(true);           // set before create: the task can exit instantly
     BaseType_t res = xTaskCreatePinnedToCore(scan_timer_ccan, "key_scan", 4096,
-                                             NULL, 3, &s_task_handle, 0);
-    return (res == pdPASS) ? ESP_OK : ESP_FAIL;
+                                             NULL, 3, NULL, 0);
+    if (res != pdPASS) {
+        s_task_alive.store(false);
+        s_running.store(false);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
 // 注册回调
@@ -91,7 +97,7 @@ esp_err_t key_module_deinit(void) {
     // clears its own handle and self-deletes. Wait on the handle (not a fixed
     // delay) and never kill it from outside while it may be mid-I2C.
     s_running.store(false);
-    for (int i = 0; i < 50 && s_task_handle != NULL; ++i) {
+    for (int i = 0; i < 50 && s_task_alive.load(); ++i) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     s_callback = NULL;

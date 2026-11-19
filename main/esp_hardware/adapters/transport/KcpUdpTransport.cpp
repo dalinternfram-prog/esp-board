@@ -1,15 +1,8 @@
 #include "adapters/transport/KcpUdpTransport.hpp"
 
 #include "esp_hardware/net/esp_udp_datagram_io.hpp"
-#include "esp_timer.h"
 
 namespace adapters {
-
-namespace {
-uint32_t nowMs() {
-    return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-}
-} // namespace
 
 KcpUdpTransport::KcpUdpTransport(const char* host, const char* port, uint32_t conv_id)
     : host_(host ? host : ""), port_(port ? port : ""), conv_id_(conv_id) {}
@@ -78,11 +71,11 @@ int KcpUdpTransport::sendRaw(const core::Bytes& data) {
     return io_->send(data.data(), data.size());
 }
 
-std::optional<core::Bytes> KcpUdpTransport::receive() {
+std::optional<core::Bytes> KcpUdpTransport::receive(uint32_t now_ms) {
     if (!kcp_) {
         return std::nullopt;
     }
-    auto message = kcp_->poll(nowMs());
+    auto message = kcp_->poll(now_ms);
     if (message.empty()) {
         return std::nullopt;
     }

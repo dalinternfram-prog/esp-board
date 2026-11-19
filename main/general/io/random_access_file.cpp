@@ -48,9 +48,11 @@ RandomAccessFile& RandomAccessFile::operator=(RandomAccessFile&& other) noexcept
 bool RandomAccessFile::openInternal() { // Internal helper that transparently manages opening
     if (m_file) return true; // File is already open; reuse handle directly
 
+    errno = 0;
     m_file = fopen(m_fullPath.c_str(), "r+b"); // Attempts to open existing file for read/update
-    if (!m_file) { // If open fails, the file likely does not exist yet
-        m_file = fopen(m_fullPath.c_str(), "w+b"); // Fall back to create and open for read/write
+    if (!m_file && errno == ENOENT) { // Only create when it truly does not exist
+        // A transient open error must never truncate an existing file.
+        m_file = fopen(m_fullPath.c_str(), "w+b"); // Create and open for read/write
     } // Closes fallback check
 
     if (!m_file) { // Checks if both attempts failed

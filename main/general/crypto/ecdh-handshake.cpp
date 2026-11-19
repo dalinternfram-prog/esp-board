@@ -81,13 +81,15 @@ std::optional<std::vector<uint8_t>> EcdhHandshake::computeSharedSecret(
         shared_secret.size(),
         &secret_len);
 
-    psa_destroy_key(key_id_);
-    key_id_ = 0;
-
     if (status != PSA_SUCCESS) {
+        // Keep the keypair: a stray/corrupt packet must not kill the pending
+        // handshake. SessionManager retries and can still complete.
         LOG_E(TAG, "Failed to compute shared secret: %d", static_cast<int>(status));
         return std::nullopt;
     }
+
+    psa_destroy_key(key_id_);
+    key_id_ = 0;
 
     shared_secret.resize(secret_len);
     LOG_I(TAG, "Handshake complete! Shared secret derived successfully.");
