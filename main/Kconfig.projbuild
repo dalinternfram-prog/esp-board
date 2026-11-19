@@ -1,0 +1,17 @@
+menu "Audio board application"
+
+    config APP_SERVER_HOST
+        string "Audio server host or IP"
+        default "172.30.165.156"
+        help
+            Hostname or IP address of the audio-server IoT UDP endpoint.
+            Overridable per build with `idf.py menuconfig` or sdkconfig.
+
+    config APP_SERVER_PORT
+        string "Audio server UDP port"
+        default "8080"
+        help
+            UDP port of the audio-server IoT endpoint.
+
+endmenu
+

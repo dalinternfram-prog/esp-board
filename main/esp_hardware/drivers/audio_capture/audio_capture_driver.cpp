@@ -6,6 +6,8 @@
 #include "driver/i2s_std.h"
 #include "portmacro.h"
 
+#include <cstring>
+
 #include "general/audio/frame_math.hpp"
 
 static const char* TAG = "AudioCaptureDriver";
@@ -102,14 +104,40 @@ bool AudioCaptureDriver::copyFrame(std::vector<uint8_t>& out) const {
         return false;
     }
 
-    // One frame = chunk_size_ samples x channels x (bits/8) bytes. The bytes
-    // are handed over untouched; decoding the slot layout is the encoder's job
-    // (and must match bsp_board's I2S/codec configuration).
     const std::size_t frame_bytes = chunk_size_ * channel_count_ *
                                     (config_.bits_per_chan / 8u);
     const auto* bytes = reinterpret_cast<const uint8_t*>(raw_dma_buffer_);
-    out.assign(bytes, bytes + frame_bytes);
-    return true;
+
+    if (config_.bits_per_chan == config_.pcm_bits_per_chan) {
+        out.assign(bytes, bytes + frame_bytes);
+        return true;
+    }
+
+    // ES7210 packs four 16-bit mics into two 32-bit I2S slots. The signal
+    // mics are the HIGH halves (mic1 in slot 0, mic3 in slot 1); the low
+    // halves are the reference/noise pair that the vendor's 3-channel
+    // esp_get_feed_data path drops as well. Emit them as PCM16 stereo instead
+    // of reinterpreting a packed pair as one 32-bit sample (which scaled the
+    // high mic correctly but threw the low mic away as 2^-31 noise).
+    if (config_.bits_per_chan == 32 && config_.pcm_bits_per_chan == 16 &&
+        channel_count_ == 2) {
+        const std::size_t words = frame_bytes / sizeof(uint32_t);
+        out.resize(words * sizeof(int16_t));
+        auto* dst = reinterpret_cast<int16_t*>(out.data());
+        for (std::size_t i = 0; i < words; ++i) {
+            uint32_t word = 0;
+            std::memcpy(&word, bytes + i * sizeof(uint32_t), sizeof word);
+            dst[i] = static_cast<int16_t>(static_cast<uint16_t>(word >> 16));
+        }
+        return true;
+    }
+
+    ESP_LOGE(TAG,
+             "Unsupported PCM conversion: i2s=%u bits, pcm=%u bits, channels=%zu",
+             static_cast<unsigned>(config_.bits_per_chan),
+             static_cast<unsigned>(config_.pcm_bits_per_chan),
+             channel_count_);
+    return false;
 }
 
 } // namespace Hardware

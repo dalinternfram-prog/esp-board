@@ -17,7 +17,7 @@ public:
     bool init() override {
         return encoder_.init(static_cast<int>(config_.sample_rate),
                              static_cast<int>(config_.channel_count),
-                             static_cast<int>(config_.bits_per_chan),
+                             static_cast<int>(config_.pcm_bits_per_chan),
                              static_cast<int>(config_.target_frame_duration_ms));
     }
 

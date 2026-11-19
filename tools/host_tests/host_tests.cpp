@@ -57,6 +57,14 @@ struct FakeCrypto : core::ICrypto {
     std::optional<core::Bytes> decrypt(const core::Bytes& p, const core::Bytes&) override {
         return p;
     }
+    // Deterministic stubs for the device-auth primitives; the host tests never
+    // exercise challenge-response.
+    std::optional<core::Bytes> sha256(const core::Bytes&) override {
+        return core::Bytes(32, 0x5A);
+    }
+    std::optional<core::Bytes> hmacSha256(const core::Bytes&, const core::Bytes&) override {
+        return core::Bytes(32, 0xA5);
+    }
 };
 
 struct FakeLink : core::ILink {

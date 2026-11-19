@@ -71,9 +71,9 @@ struct IAudioSource {
     virtual ~IAudioSource() = default;
     virtual bool open() = 0;
     virtual void close() = 0;
-    // Raw bytes of one PCM frame (format is described by the encoder's
-    // sampleRate()/channelCount() and the board's bit depth). Never a
-    // re-interpreted int16 vector.
+    // Raw bytes of one PCM frame in the encoder's input format
+    // (AudioConfig::pcm_bits_per_chan). The capture driver has already
+    // unpacked the board's I2S slot layout into this format.
     virtual bool readFrame(Bytes& pcm) = 0;
 };
 
@@ -150,6 +150,10 @@ struct ICrypto {
     virtual std::optional<Bytes> computeSharedSecret(const Bytes& peer_public_key) = 0;
     virtual std::optional<Bytes> encrypt(const Bytes& plaintext, const Bytes& key) = 0;
     virtual std::optional<Bytes> decrypt(const Bytes& packet, const Bytes& key) = 0;
+    // Device challenge-response primitives. SHA-256 derives the HMAC key from
+    // the provisioned secret; HMAC-SHA256(key, nonce || deviceId) proves it.
+    virtual std::optional<Bytes> sha256(const Bytes& data) = 0;
+    virtual std::optional<Bytes> hmacSha256(const Bytes& key, const Bytes& data) = 0;
 };
 
 // Task/thread creation (FreeRTOS today; std::thread or another RTOS elsewhere).
@@ -227,7 +231,10 @@ struct IPlaylist {
 struct AudioConfig {
     uint32_t sample_rate = 16000;
     uint32_t channel_count = 2;
-    uint32_t bits_per_chan = 32;              // 32-bit I2S slots
+    uint32_t bits_per_chan = 32;              // I2S slot width (2 x 32-bit)
+    // Width of the PCM handed to the encoder. The capture driver unpacks the
+    // board's 32-bit slots into this format; Opus must be configured with it.
+    uint32_t pcm_bits_per_chan = 16;
     uint32_t target_frame_duration_ms = 20;   // Opus requires 20 ms
 };
 

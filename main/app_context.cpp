@@ -1,11 +1,21 @@
 #include "app_context.hpp"
 
+#include "sdkconfig.h"
+
+#ifndef CONFIG_APP_SERVER_HOST
+#define CONFIG_APP_SERVER_HOST "172.30.165.156"
+#endif
+#ifndef CONFIG_APP_SERVER_PORT
+#define CONFIG_APP_SERVER_PORT "8080"
+#endif
+
 namespace app {
 
 AppContext::AppContext()
     : network(*this, link, clock, random, crypto, tasks, logger),
       audio(audio_in, audio_encoder, clock, tasks, logger, network),
-      loop(network, audio, device, files, firmware, link, clock, tasks, logger) {}
+      loop(network, audio, device, files, firmware, link, clock, tasks, logger,
+           storage, crypto, CONFIG_APP_SERVER_HOST, CONFIG_APP_SERVER_PORT) {}
 
 std::unique_ptr<core::ITransport> AppContext::create(const char* host, const char* port,
                                                      uint32_t conv_id) {
