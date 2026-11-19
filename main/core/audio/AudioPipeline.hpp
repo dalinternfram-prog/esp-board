@@ -32,7 +32,7 @@ private:
     ILogger&       logger_;
     Sender         sender_;
 
-    std::vector<int16_t> pcm_;
+    Bytes pcm_;                 // raw PCM frame bytes (format = encoder config)
     uint32_t frame_count_ = 0;
 };
 

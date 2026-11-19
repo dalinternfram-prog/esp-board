@@ -63,7 +63,7 @@ bool aes_gcm_encrypt(const uint8_t key[AES_KEY_BYTES],
 }
 
 std::optional<std::vector<uint8_t>> aes_gcm_encrypt(
-    const std::vector<uint8_t>& plaintext, std::vector<uint8_t> aes_key,
+    const std::vector<uint8_t>& plaintext, const std::vector<uint8_t>& aes_key,
     CryptoBackend& backend)
 {
     if (aes_key.size() != AES_KEY_BYTES) {

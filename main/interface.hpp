@@ -71,14 +71,17 @@ struct IAudioSource {
     virtual ~IAudioSource() = default;
     virtual bool open() = 0;
     virtual void close() = 0;
-    virtual bool readFrame(std::vector<int16_t>& pcm) = 0;
+    // Raw bytes of one PCM frame (format is described by the encoder's
+    // sampleRate()/channelCount() and the board's bit depth). Never a
+    // re-interpreted int16 vector.
+    virtual bool readFrame(Bytes& pcm) = 0;
 };
 
 // Audio codec (Opus / LC3 / ...).
 struct IAudioEncoder {
     virtual ~IAudioEncoder() = default;
     virtual bool init() = 0;
-    virtual bool encode(const std::vector<int16_t>& pcm, Bytes& out) = 0;
+    virtual bool encode(const Bytes& pcm, Bytes& out) = 0;   // raw PCM bytes
     virtual uint32_t frameDurationMs() const = 0;
     virtual uint32_t sampleRate() const = 0;
     virtual uint32_t channelCount() const = 0;

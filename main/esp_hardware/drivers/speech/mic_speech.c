@@ -74,6 +74,13 @@ void detect_Task(void *arg)
         }
 
         if (res->raw_data_channels == 1 && res->wakeup_state == WAKENET_DETECTED) {
+            // Single-mic AFE has no channel verification pass; report the wake
+            // event here too, otherwise listeners never see ESP_SR_EVT_AWAKEN.
+            esp_sr_evt_data_t evtdata;
+            evtdata.awaken_channel = 0;
+            if (spench_callback != NULL) {
+                spench_callback(ESP_SR_EVT_AWAKEN, evtdata, NULL);
+            }
             wakeup_flag = 1;
         } else if (res->raw_data_channels > 1 && res->wakeup_state == WAKENET_CHANNEL_VERIFIED) {
             // For a multi-channel AFE, it is necessary to wait for the channel to be verified.

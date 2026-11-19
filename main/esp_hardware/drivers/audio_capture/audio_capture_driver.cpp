@@ -97,19 +97,19 @@ esp_err_t AudioCaptureDriver::readSamples() {
     return ESP_OK;
 }
 
-std::vector<int16_t> AudioCaptureDriver::getFrameBuffer() const {
+bool AudioCaptureDriver::copyFrame(std::vector<uint8_t>& out) const {
     if (raw_dma_buffer_ == nullptr) {
-        return {};
+        return false;
     }
 
-    const std::size_t total_samples = chunk_size_ * channel_count_;
-
-    int factor = 1;
-    if (config_.bits_per_chan == 32) {
-        factor = 2;
-    }
-
-    return std::vector<int16_t>(raw_dma_buffer_, raw_dma_buffer_ + total_samples * factor);
+    // One frame = chunk_size_ samples x channels x (bits/8) bytes. The bytes
+    // are handed over untouched; decoding the slot layout is the encoder's job
+    // (and must match bsp_board's I2S/codec configuration).
+    const std::size_t frame_bytes = chunk_size_ * channel_count_ *
+                                    (config_.bits_per_chan / 8u);
+    const auto* bytes = reinterpret_cast<const uint8_t*>(raw_dma_buffer_);
+    out.assign(bytes, bytes + frame_bytes);
+    return true;
 }
 
 } // namespace Hardware

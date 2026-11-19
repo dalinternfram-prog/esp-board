@@ -49,8 +49,8 @@ include roots, so includes use stable prefixes (`interface.hpp`, `core/...`,
 | `IDeviceInfo` | MAC / chip / device id | `EspDeviceInfo` | any board |
 | `IStorage` | small blob key-value | `EspNvsStorage` | any KV store |
 | `IFileStore` | mount + file persistence | `EspFileStore` | any FS |
-| `IAudioSource` | open/close/read PCM | `EspI2sAudioSource` | any mic |
-| `IAudioEncoder` | audio codec | `OpusEncoder` | LC3 / other |
+| `IAudioSource` | open/close/read one raw PCM frame | `EspI2sAudioSource` | any mic |
+| `IAudioEncoder` | encode raw PCM frame bytes | `OpusEncoder` | LC3 / other |
 | `ITaskRunner` | create/stop/delay/exit tasks | `EspTaskRunner` (FreeRTOS) | `std::thread` / RTOS |
 | `IFirmwareUpdater` | OTA init / apply | `EspFirmwareUpdater` | SD / serial |
 | `IMediaPlayer` | play/pause/stop/volume | `EspMediaPlayer` | any player |
@@ -63,6 +63,12 @@ include roots, so includes use stable prefixes (`interface.hpp`, `core/...`,
 `IAppServices` (also in `interface.hpp`) bundles references to every port above
 plus `ITransportFactory`; `core/app` receives it by reference. `AudioConfig`
 carries the sample rate / channels / bit depth / frame duration.
+
+Audio frames cross the ports as raw `Bytes`: `IAudioSource::readFrame(Bytes&)`
+returns exactly the bytes the I2S/codec configuration produces, and
+`IAudioEncoder::encode(const Bytes&, Bytes&)` consumes them. The slot layout
+(2 x 16-bit vs 4 x 16-bit vs 32-bit words) is a board/encoder contract, not
+something `AudioPipeline` re-interprets as `int16` samples.
 
 ## General logic rescued from `esp_hardware`
 
@@ -105,7 +111,18 @@ compiled from `core/` and `general/`:
 * `general/crypto` and `general/opus` need PSA/libopus headers, so they are
   validated by the IDF build.
 
-Run both after every change. Run `idf.py reconfigure` after adding a source
+`tools/run_host_tests.sh` (host unit tests, no hardware):
+
+* `ButtonStateMachine`: short press, long press fires once while held, and a
+  release exactly at the threshold still yields `LongPress`.
+* `AudioPipeline`: one encode per source frame, monotonic timestamps (first
+  frame is 0), source exhaustion stops the loop.
+* `SessionManager` with fake `ITransport` / `ILink` / `IClock` / `IRandom` /
+  `ICrypto`: handshake -> established, encrypted `sendReliable`, link-down
+  reset, reopen throttle, silent-server reset with a fresh conv id, WaitAck
+  timeout, dead-link early reset + epoch increments.
+
+Run the three gates (layers, host compile, host tests) after every change. Run `idf.py reconfigure` after adding a source
 directory (the CMake glob has no `CONFIGURE_DEPENDS`).
 
 ## Domain core (`main/core`)
@@ -195,6 +212,10 @@ replaces that thin wrapper.
 - [x] `AppContext` is a plain class in `main/`; `app::context()` singleton removed.
 - [x] Audio config + frame math moved to the contract / `general/audio/`.
 - [x] Crypto backend injected (`CryptoBackend` / `EspCryptoBackend`).
+- [x] Audio ports carry raw PCM `Bytes` (no `int16` smuggling); `ICrypto` keys
+      are passed by const reference. `mic_speech` single-mic AFE now reports
+      `ESP_SR_EVT_AWAKEN` like the multi-channel path.
+- [x] Real host unit tests with fake ports (`tools/run_host_tests.sh`).
 - [x] Robustness pass: RGB boot crash, UDP FD leak, keepalive instead of
       registration spam, fresh conv per reset, dead-link early reset,
       NetState/MediaController mutexes, graceful task shutdown, ECDH key

@@ -21,7 +21,8 @@ public:
     AudioCaptureDriver& operator=(AudioCaptureDriver&& other) noexcept;
 
     [[nodiscard]] esp_err_t readSamples();
-    [[nodiscard]] std::vector<int16_t> getFrameBuffer() const;
+    // Copies the raw I2S frame bytes (slot layout untouched).
+    [[nodiscard]] bool copyFrame(std::vector<uint8_t>& out) const;
     [[nodiscard]] std::size_t channelCount() const noexcept { return channel_count_; }
     [[nodiscard]] std::size_t chunkSize() const noexcept { return chunk_size_; }
 

@@ -30,15 +30,14 @@ public:
 
     void close() override { driver_.reset(); }
 
-    bool readFrame(std::vector<int16_t>& pcm) override {
+    bool readFrame(core::Bytes& pcm) override {
         if (!driver_) {
             return false;
         }
         if (driver_->readSamples() != ESP_OK) {
             return false;
         }
-        pcm = driver_->getFrameBuffer();
-        return !pcm.empty();
+        return driver_->copyFrame(pcm);
     }
 
 private:

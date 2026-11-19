@@ -35,7 +35,7 @@ bool aes_gcm_encrypt(const uint8_t key[AES_KEY_BYTES],
                      CryptoBackend& backend);
 
 std::optional<std::vector<uint8_t>> aes_gcm_encrypt(const std::vector<uint8_t>& plaintext,
-                                                    std::vector<uint8_t> aes_key,
+                                                    const std::vector<uint8_t>& aes_key,
                                                     CryptoBackend& backend);
 
 // Decrypts a packet laid out as [12B nonce | 16B tag | ciphertext].
@@ -45,7 +45,7 @@ bool aes_gcm_decrypt(const uint8_t key[AES_KEY_BYTES],
                      CryptoBackend& backend);
 
 std::optional<std::vector<uint8_t>> aes_gcm_decrypt(const std::vector<uint8_t>& packet,
-                                                    std::vector<uint8_t> key,
+                                                    const std::vector<uint8_t>& key,
                                                     CryptoBackend& backend);
 
 // ECDH P-256 handshake. Owns the PSA key pair; generatePublicKey() and the

@@ -21,7 +21,7 @@ public:
                              static_cast<int>(config_.target_frame_duration_ms));
     }
 
-    bool encode(const std::vector<int16_t>& pcm, core::Bytes& out) override {
+    bool encode(const core::Bytes& pcm, core::Bytes& out) override {
         auto encoded = encoder_.encode(pcm.data());
         if (encoded.empty()) {
             return false;
