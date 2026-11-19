@@ -31,18 +31,18 @@ void handle_incoming(const core::Bytes& packet, core::IAppServices& svc,
         }
 
         if (info.command == protocol::IoT::RecordCommand::START) {
-            if (!AudioService::is_running()) {
-                AudioService::start(svc);
-                svc.log.logf(core::LogLevel::Info,
-                             "Audio service started via server command (timestamp %u)",
-                             static_cast<unsigned>(info.timestampMs));
-            }
+            svc.log.logf(core::LogLevel::Info,
+                         "Record START (requestId=%u, ts=%lld)",
+                         static_cast<unsigned>(info.requestId),
+                         static_cast<long long>(info.timestampMs));
+            // Always pass requestId and always ack (including already-running).
+            AudioService::start(svc, info.requestId);
         } else if (info.command == protocol::IoT::RecordCommand::STOP) {
-            if (AudioService::is_running()) {
-                AudioService::stop();
-                svc.log.logf(core::LogLevel::Info,
-                             "Audio service stopped via server command.");
-            }
+            svc.log.logf(core::LogLevel::Info,
+                         "Record STOP (requestId=%u)",
+                         static_cast<unsigned>(info.requestId));
+            // Always ack (including already-stopped).
+            AudioService::stop(info.requestId);
         }
         return;
     }
@@ -64,6 +64,9 @@ void handle_incoming(const core::Bytes& packet, core::IAppServices& svc,
                 firmware_marked = true;
                 svc.log.logf(core::LogLevel::Info, "Firmware marked valid");
             }
+        } else if (response.status == protocol::IoT::Status_DeviceQuery::AUTH_REQUIRED) {
+            svc.log.logf(core::LogLevel::Warn,
+                         "Device query requires authentication (challenge flow not implemented yet)");
         } else {
             svc.log.logf(core::LogLevel::Warn, "Device query rejected (status %u): %s",
                          static_cast<unsigned>(response.status), response.message.c_str());

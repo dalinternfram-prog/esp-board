@@ -11,13 +11,10 @@ AudioPipeline::AudioPipeline(IAudioSource& source, IAudioEncoder& encoder, ICloc
       encoder_(encoder),
       clock_(clock),
       logger_(logger),
-      sender_(std::move(sender)) {
-    session_start_ms_ = clock_.nowMs();
-}
+      sender_(std::move(sender)) {}
 
 void AudioPipeline::reset() {
     frame_count_ = 0;
-    session_start_ms_ = clock_.nowMs();
 }
 
 bool AudioPipeline::step() {
@@ -34,7 +31,9 @@ bool AudioPipeline::step() {
         return false;
     }
 
-    const uint32_t timestamp_ms = clock_.nowMs() - session_start_ms_;
+    // Stream-relative time from frame progress: the first packet is exactly 0
+    // (protocol: "0 = starts a new recording"), immune to scheduling jitter.
+    const uint32_t timestamp_ms = frame_count_ * encoder_.frameDurationMs();
     if (sender_) {
         sender_(compressed, timestamp_ms);
     }

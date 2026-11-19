@@ -34,7 +34,6 @@ private:
 
     std::vector<int16_t> pcm_;
     uint32_t frame_count_ = 0;
-    uint32_t session_start_ms_ = 0;
 };
 
 } // namespace core

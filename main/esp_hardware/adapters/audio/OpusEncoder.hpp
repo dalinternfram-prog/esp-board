@@ -34,6 +34,9 @@ public:
         return config_.target_frame_duration_ms;
     }
 
+    uint32_t sampleRate() const override { return config_.sample_rate; }
+    uint32_t channelCount() const override { return config_.channel_count; }
+
 private:
     core::AudioConfig config_;
     Opus encoder_;

@@ -80,6 +80,8 @@ struct IAudioEncoder {
     virtual bool init() = 0;
     virtual bool encode(const std::vector<int16_t>& pcm, Bytes& out) = 0;
     virtual uint32_t frameDurationMs() const = 0;
+    virtual uint32_t sampleRate() const = 0;
+    virtual uint32_t channelCount() const = 0;
 };
 
 // Persistence: small blobs (keys, credentials, counters). NVS today, any
