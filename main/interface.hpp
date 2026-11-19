@@ -239,27 +239,25 @@ struct ITransportFactory {
                                                uint32_t conv_id) = 0;
 };
 
-// Bundle of every port the application needs. core/app receives this by
-// reference and never sees the composition root or the hardware layer.
-struct IAppServices {
-    ILogger&           log;
-    IClock&            clock;
-    IRandom&           random;
-    ICrypto&           crypto;
-    IDeviceInfo&       device;
-    IStorage&          storage;
-    IFileStore&        files;
-    ILink&             link;
-    ITaskRunner&       tasks;
-    IFirmwareUpdater&  firmware;
-    IAudioSource&      audio_in;
-    IAudioEncoder&     audio_encoder;
-    IMediaPlayer&      media_player;
-    IIndicator&        indicator;
-    IButtonInput&      buttons;
-    ISpeechInput&      speech;
-    IPlaylist&         playlist;
-    ITransportFactory& transport_factory;
+// Outbound application channel of the session (core::app::NetworkService).
+// Thread-safe; send() returns <0 under backpressure or when no session is up.
+struct INetwork {
+    virtual ~INetwork() = default;
+    // Brings the transport/session up (called once by the application loop
+    // after FS/OTA/WiFi startup). Safe to call again: it no-ops if running.
+    virtual void start(const char* host, const char* port) = 0;
+    virtual int send(const Bytes& data) = 0;
+    virtual std::optional<Bytes> receive() = 0;   // one message, if any
+    virtual bool isEstablished() const = 0;
+    virtual uint32_t epoch() const = 0;           // bumps on every reset
+};
+
+// Capture-session control (core::app::AudioService).
+struct IAudioService {
+    virtual ~IAudioService() = default;
+    virtual void start(uint32_t request_id = 0) = 0;
+    virtual void stop(uint32_t request_id = 0, bool ack = true) = 0;
+    virtual bool isRunning() const = 0;
 };
 
 } // namespace core

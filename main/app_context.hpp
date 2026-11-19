@@ -1,12 +1,15 @@
 #pragma once
 
-// Composition root: owns every concrete adapter and the media controller.
-// This is a plain class created in main.cpp and shared as core::IAppServices;
-// there is no global singleton accessor.
+// Composition root: owns every concrete adapter, the network/audio services
+// and the application loop. A plain class created in main.cpp; there is no
+// global singleton accessor and no service locator.
 
 #include <memory>
 
+#include "core/app/audio_service.hpp"
 #include "core/app/media_controller.hpp"
+#include "core/app/network_service.hpp"
+#include "core/app/prog.hpp"
 #include "interface.hpp"
 
 #include "esp_hardware/adapters/audio/EspI2sAudioSource.hpp"
@@ -32,9 +35,6 @@ class AppContext : public core::ITransportFactory {
 public:
     AppContext();
 
-    // Port bundle handed to core/app. No singleton: the owner passes this.
-    core::IAppServices& services() { return services_; }
-
     void startMedia();
 
     // core::ITransportFactory
@@ -57,6 +57,10 @@ public:
     adapters::EspI2sAudioSource audio_in{audio_config};
     adapters::OpusEncoder       audio_encoder{audio_config};
 
+    core::app::NetworkService network;
+    core::app::AudioService   audio;
+    core::app::AppLoop        loop;
+
     adapters::EspMediaPlayer media_player;
     adapters::EspIndicator   indicator;
     adapters::EspButtonInput buttons;
@@ -64,9 +68,6 @@ public:
     adapters::EspSdPlaylist  playlist;
 
     std::unique_ptr<core::app::MediaController> media;
-
-private:
-    core::IAppServices services_;
 };
 
 } // namespace app

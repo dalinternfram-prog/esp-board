@@ -18,7 +18,7 @@ extern "C" void app_main() {
     context.startMedia();
 
     if (context.tasks.start("app_run_loop_task", 9152, 5, -1,
-                            app_run_loop, &context.services()) == nullptr) {
+                            core::app::AppLoop::entry, &context.loop) == nullptr) {
         context.logger.logf(core::LogLevel::Error,
                             "Failed to start the application task");
     }

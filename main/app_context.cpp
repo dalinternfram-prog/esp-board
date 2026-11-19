@@ -3,10 +3,9 @@
 namespace app {
 
 AppContext::AppContext()
-    : services_{
-          logger, clock, random, crypto, device, storage, files, link, tasks,
-          firmware, audio_in, audio_encoder, media_player, indicator, buttons,
-          speech, playlist, *this} {}
+    : network(*this, link, clock, random, crypto, tasks, logger),
+      audio(audio_in, audio_encoder, clock, tasks, logger, network),
+      loop(network, audio, device, files, firmware, link, clock, tasks, logger) {}
 
 std::unique_ptr<core::ITransport> AppContext::create(const char* host, const char* port,
                                                      uint32_t conv_id) {

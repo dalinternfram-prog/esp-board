@@ -43,7 +43,7 @@ inline void on_wifi_got_ip(const char *event, const void *data, size_t len, void
                  static_cast<unsigned>(status.quality));
 
         // TODO(proto): once components/proto defines the "got_ip" message,
-        // encode via protocol::IoT::client::encode...(...) and Network::send(...).
+        // encode via protocol::IoT::client::encode...(...) and INetwork::send(...).
 
     } else {
         ESP_LOGW(TAG, "Failed to retrieve full WiFi status during got_ip event");

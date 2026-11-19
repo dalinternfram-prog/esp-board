@@ -38,7 +38,7 @@ inline void on_wifi_disconnected(const char *event, const void *data, size_t len
              info->ssid, static_cast<unsigned>(info->reason));
 
     // TODO(proto): once components/proto defines the "disconnected" message,
-    // encode via protocol::IoT::client::encode...(...) and Network::send(...).
+    // encode via protocol::IoT::client::encode...(...) and INetwork::send(...).
 }
 
 } // namespace wifi

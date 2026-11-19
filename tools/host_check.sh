@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Proves that the portable layers compile on the host (no ESP-IDF, no Xtensa):
-#   * core/app (prog, audio_service, net_manager, media_controller, session_factory)
+#   * core/app (prog, audio_service, network_service, media_controller, session_factory)
 #   * core/audio, core/session
 #   * every general/ pure source + ikcp.c (C99)
 #   * the POSIX UDP DatagramIo adapter
@@ -26,7 +26,7 @@ CXXFLAGS=(
 
 PURE_SOURCES="
 main/core/app/media_controller.cpp
-main/core/app/net_manager.cpp
+main/core/app/network_service.cpp
 main/core/app/session_factory.cpp
 main/core/app/prog.cpp
 main/core/app/audio_service.cpp

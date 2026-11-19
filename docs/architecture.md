@@ -5,11 +5,11 @@ the application core knows nothing about ESP-IDF, FreeRTOS, KCP, WiFi or the boa
 
 ```
 main/
-  interface.hpp        ports + AudioConfig + IAppServices + ITransportFactory
+  interface.hpp        ports + AudioConfig + ITransportFactory
   main.cpp             thin entry: hardware::boot(config) + start core/app task
-  app_context.*        composition root (plain class) -> core::IAppServices
+  app_context.*        composition root (plain class) owning adapters + services
   core/                application + domain (pure C++)
-    app/               prog, audio_service, net worker, media_controller,
+    app/               AppLoop, AudioService, NetworkService, media_controller,
                        session_factory
     session/           SessionManager (handshake, liveness, reconnect)
     audio/             AudioPipeline
@@ -59,10 +59,14 @@ include roots, so includes use stable prefixes (`interface.hpp`, `core/...`,
 | `ISpeechInput` | voice commands | `EspSpeechInput` | any ASR |
 | `IPlaylist` | track listing | `EspSdPlaylist` | any FS |
 | `ITransportFactory` | create the session transport | `AppContext` | any transport |
+| `INetwork` | start/send/receive/epoch of the session | `core::app::NetworkService` | any session |
+| `IAudioService` | start/stop/isRunning capture | `core::app::AudioService` | any capture |
 
-`IAppServices` (also in `interface.hpp`) bundles references to every port above
-plus `ITransportFactory`; `core/app` receives it by reference. `AudioConfig`
-carries the sample rate / channels / bit depth / frame duration.
+`AppContext` owns two service objects built from the ports: `NetworkService`
+(transport + `SessionManager` + worker task) and `AudioService`
+(capture/encode/send). Each takes only the ports it uses; there is no
+`IAppServices` service locator and no global "current" network/audio state.
+`AudioConfig` carries the sample rate / channels / bit depth / frame duration.
 
 Audio frames cross the ports as raw `Bytes`: `IAudioSource::readFrame(Bytes&)`
 returns exactly the bytes the I2S/codec configuration produces, and
@@ -84,7 +88,7 @@ compiled from `core/` and `general/`:
 | path join, stdio read/write | `general/io/Path`, `general/io/StdioFileStore` | `adapters/storage/EspFileStore` |
 | random-access file ops (offset/append/shift/truncate) | `general/io/RandomAccessFile` | `storage/file_manager` |
 | MAC / device-id formatting | `general/util/format.hpp` | `adapters/device/EspDeviceInfo` |
-| session wiring / conv id | `core/app/session_factory` + `Network::init` | `AppContext::create` |
+| session wiring / conv id | `core/app/session_factory` + `NetworkService` | `AppContext::create` |
 | audio frame sizing | `general/audio/frame_math.hpp` | `drivers/audio_capture` |
 
 ## Layer rules (enforced)
@@ -148,15 +152,18 @@ directory (the CMake glob has no `CONFIGURE_DEPENDS`).
 
 ## Application (`main/core/app`)
 
-* `prog.cpp` - device registration + server message dispatch. Receives
-  `core::IAppServices&` from the platform layer; no ESP-IDF/root includes.
+* `prog.cpp` - `core::app::AppLoop`: device registration + server message
+  dispatch. Takes `INetwork&` / `IAudioService&` plus the ports it uses; no
+  ESP-IDF/root includes.
   Registration is sent on (re)connect transitions detected via the session
   epoch, then as a 3 s keepalive; the RX queue is drained per loop iteration;
   `IFirmwareUpdater::markAppValid()` runs once on the first successful query.
-* `audio_service.cpp` - start/stop the capture task through `ITaskRunner`;
-  record acks use `IClock::nowUnixMs()`.
-* `net_manager.cpp` - builds the transport/session via `ITransportFactory` +
-  `SessionManager`, then runs the worker task through `ITaskRunner`.
+* `audio_service.cpp` - `core::app::AudioService`: start/stop the capture task
+  through `ITaskRunner`; record acks go out through the injected `INetwork`
+  and use `IClock::nowUnixMs()`.
+* `network_service.cpp` - `core::app::NetworkService`: builds the
+  transport/session via `ITransportFactory` + `SessionManager`, then runs the
+  worker task through `ITaskRunner`.
 
 ## Hardware (`main/esp_hardware`)
 
@@ -173,10 +180,11 @@ directory (the CMake glob has no `CONFIGURE_DEPENDS`).
 ## Composition root
 
 `main/app_context.{hpp,cpp}` is a **plain class** owned by `main.cpp`. It
-constructs every concrete adapter and exposes `core::IAppServices& services()`.
-There is no `app::context()` singleton: `main.cpp` passes
-`&context.services()` to `app_run_loop`, so `core/app` receives ports by
-reference and never sees the composition root.
+constructs every concrete adapter plus `NetworkService`, `AudioService` and
+`AppLoop`, and passes only the ports each one needs. There is no
+`app::context()` singleton: `main.cpp` passes `&context.loop` (typed
+`AppLoop*`) to `ITaskRunner::start`, so `core/app` never sees the composition
+root.
 
 **Swapping hardware** means replacing `main/esp_hardware/` (or pointing
 `HARDWARE_HEADER` at another folder). `main/core/` and `main/general/` stay
@@ -210,6 +218,10 @@ replaces that thin wrapper.
 - [x] Dependency directions enforced: `core/` → interface/general only;
       `esp_hardware/` → interface/general only; `general/` is a leaf.
 - [x] `AppContext` is a plain class in `main/`; `app::context()` singleton removed.
+- [x] `Network` / `AudioService` are classes owned by `AppContext`; the
+      `IAppServices` service locator and all `services()` static pointers are
+      gone. Application code depends on the small `INetwork` /
+      `IAudioService` ports.
 - [x] Audio config + frame math moved to the contract / `general/audio/`.
 - [x] Crypto backend injected (`CryptoBackend` / `EspCryptoBackend`).
 - [x] Audio ports carry raw PCM `Bytes` (no `int16` smuggling); `ICrypto` keys

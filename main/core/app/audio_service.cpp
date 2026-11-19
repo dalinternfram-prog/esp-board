@@ -2,18 +2,13 @@
 
 #include "core/app/audio_service.hpp"
 
-#include <atomic>
-#include <cstdint>
-#include <mutex>
-
-#include "core/app/net_manager.hpp"
 #include "core/audio/AudioPipeline.hpp"
 #include "interface.hpp"
 
 #include "audio_protocol.hpp"      // protocol::IoT::AudioPacket / encodeAudio
 #include "turn_on_audio.hpp"       // protocol::IoT::client::encodeRecordAck
 
-namespace AudioService {
+namespace core::app {
 
 namespace {
 
@@ -23,178 +18,167 @@ constexpr int      kTaskPriority  = 5;
 constexpr int      kTaskCore      = 1;
 constexpr int      kStopTimeoutMs = 500;
 
-enum class RunState { Stopped, Running, Stopping };
-
-struct AudioState {
-    // Guards task-handle publication vs. the task clearing it on another core.
-    std::mutex mutex;
-    std::atomic<core::ITaskRunner::TaskId> task{nullptr};
-    std::atomic<bool> running{false};
-    std::atomic<RunState> run_state{RunState::Stopped};
-    std::atomic<uint32_t> request_id{0};   // RecordControl.requestId
-};
-
-AudioState& state() {
-    static AudioState s;
-    return s;
-}
-
-core::IAppServices*& services() {
-    static core::IAppServices* s = nullptr;
-    return s;
-}
-
-void send_ack(core::IAppServices& svc, protocol::IoT::RecordCommand cmd,
-              uint32_t request_id, bool ok, const char* error = "") {
-    Network::send(protocol::IoT::client::encodeRecordAck(
-        cmd, svc.clock.nowUnixMs(), request_id, ok, error));
-}
-
-void clear_task_handle() {
-    auto& s = state();
-    std::lock_guard<std::mutex> lock(s.mutex);
-    s.task.store(nullptr);
-    s.run_state.store(RunState::Stopped);
-}
-
-void audio_task(void* /*arg*/) {
-    core::IAppServices& svc = *services();
-    const uint32_t request_id = state().request_id.load();
-
-    svc.log.logf(core::LogLevel::Info, "Audio task created & initializing");
-
-    if (!svc.audio_in.open()) {
-        svc.log.logf(core::LogLevel::Error, "Audio input open failed");
-        send_ack(svc, protocol::IoT::RecordCommand::START, request_id, false,
-                 "audio input open failed");
-        clear_task_handle();
-        svc.tasks.exitCurrentTask();
-        return;
-    }
-
-    if (!svc.audio_encoder.init()) {
-        svc.log.logf(core::LogLevel::Error, "Audio encoder init failed");
-        svc.audio_in.close();   // release the driver + PSRAM DMA buffer
-        send_ack(svc, protocol::IoT::RecordCommand::START, request_id, false,
-                 "opus encoder init failed");
-        clear_task_handle();
-        svc.tasks.exitCurrentTask();
-        return;
-    }
-
-    // Pipeline is really running: only now report START success to the server.
-    send_ack(svc, protocol::IoT::RecordCommand::START, request_id, true);
-
-    core::AudioPipeline pipeline(
-        svc.audio_in, svc.audio_encoder, svc.clock, svc.log,
-        [&svc](const core::Bytes& compressed, uint32_t timestamp_ms) {
-            protocol::IoT::AudioPacket packet;
-            packet.timestampMs = static_cast<int64_t>(timestamp_ms);
-            packet.durationMs = svc.audio_encoder.frameDurationMs();
-            packet.payload = compressed;
-            packet.codec = 1;   // 1 = Opus
-            packet.sampleRate = svc.audio_encoder.sampleRate();
-            packet.channels = svc.audio_encoder.channelCount();
-            Network::send(protocol::IoT::client::encodeAudio(packet));
-        });
-
-    while (state().running.load()) {
-        // The I2S read inside step() blocks ~1 frame and yields, so only delay
-        // on failure; otherwise the loop would fall behind the 20 ms frame rate.
-        if (!pipeline.step()) {
-            svc.tasks.delayMs(kLoopDelayMs);
-        }
-    }
-
-    svc.audio_in.close();
-    svc.log.logf(core::LogLevel::Info, "Exiting audio loop: releasing drivers");
-    clear_task_handle();
-    svc.tasks.exitCurrentTask();
+void sendAck(INetwork& network, IClock& clock, protocol::IoT::RecordCommand cmd,
+             uint32_t request_id, bool ok, const char* error = "") {
+    network.send(protocol::IoT::client::encodeRecordAck(
+        cmd, clock.nowUnixMs(), request_id, ok, error));
 }
 
 } // namespace
 
-void start(core::IAppServices& svc, uint32_t request_id) {
-    services() = &svc;
-    auto& s = state();
+AudioService::AudioService(IAudioSource& input, IAudioEncoder& encoder, IClock& clock,
+                           ITaskRunner& tasks, ILogger& logger, INetwork& network)
+    : input_(input),
+      encoder_(encoder),
+      clock_(clock),
+      tasks_(tasks),
+      logger_(logger),
+      network_(network) {}
 
+AudioService::~AudioService() {
+    // Signal the loop only; the owner must stop() while the task runner lives.
+    running_.store(false);
+}
+
+void AudioService::taskEntry(void* arg) {
+    static_cast<AudioService*>(arg)->taskLoop();
+}
+
+void AudioService::clearTaskHandle() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    task_.store(nullptr);
+    run_state_.store(RunState::Stopped);
+}
+
+void AudioService::taskLoop() {
+    const uint32_t request_id = request_id_.load();
+
+    logger_.logf(LogLevel::Info, "Audio task created & initializing");
+
+    if (!input_.open()) {
+        logger_.logf(LogLevel::Error, "Audio input open failed");
+        sendAck(network_, clock_, protocol::IoT::RecordCommand::START, request_id,
+                false, "audio input open failed");
+        clearTaskHandle();
+        tasks_.exitCurrentTask();
+        return;
+    }
+
+    if (!encoder_.init()) {
+        logger_.logf(LogLevel::Error, "Audio encoder init failed");
+        input_.close();   // release the driver + PSRAM DMA buffer
+        sendAck(network_, clock_, protocol::IoT::RecordCommand::START, request_id,
+                false, "opus encoder init failed");
+        clearTaskHandle();
+        tasks_.exitCurrentTask();
+        return;
+    }
+
+    // Pipeline is really running: only now report START success to the server.
+    sendAck(network_, clock_, protocol::IoT::RecordCommand::START, request_id, true);
+
+    AudioPipeline pipeline(
+        input_, encoder_, clock_, logger_,
+        [this](const Bytes& compressed, uint32_t timestamp_ms) {
+            protocol::IoT::AudioPacket packet;
+            packet.timestampMs = static_cast<int64_t>(timestamp_ms);
+            packet.durationMs = encoder_.frameDurationMs();
+            packet.payload = compressed;
+            packet.codec = 1;   // 1 = Opus
+            packet.sampleRate = encoder_.sampleRate();
+            packet.channels = encoder_.channelCount();
+            network_.send(protocol::IoT::client::encodeAudio(packet));
+        });
+
+    while (running_.load()) {
+        // The I2S read inside step() blocks ~1 frame and yields, so only delay
+        // on failure; otherwise the loop would fall behind the 20 ms frame rate.
+        if (!pipeline.step()) {
+            tasks_.delayMs(kLoopDelayMs);
+        }
+    }
+
+    input_.close();
+    logger_.logf(LogLevel::Info, "Exiting audio loop: releasing drivers");
+    clearTaskHandle();
+    tasks_.exitCurrentTask();
+}
+
+void AudioService::start(uint32_t request_id) {
     // If a previous stop is still winding down, wait for it (outside the
     // mutex; the exiting task needs it to clear its handle).
-    if (s.run_state.load() == RunState::Stopping) {
+    if (run_state_.load() == RunState::Stopping) {
         int waited = 0;
-        while (s.task.load() != nullptr && waited < kStopTimeoutMs) {
-            svc.tasks.delayMs(kLoopDelayMs);
+        while (task_.load() != nullptr && waited < kStopTimeoutMs) {
+            tasks_.delayMs(kLoopDelayMs);
             waited += kLoopDelayMs;
         }
     }
 
     // Hold the lock across publish+store: a fast-exiting task cannot erase the
     // handle before start() stores it (cross-core startup race).
-    std::lock_guard<std::mutex> lock(s.mutex);
-    if (s.run_state.load() != RunState::Stopped) {
-        svc.log.logf(core::LogLevel::Warn, "Audio already running; acking START");
-        send_ack(svc, protocol::IoT::RecordCommand::START, request_id, true);
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (run_state_.load() != RunState::Stopped) {
+        logger_.logf(LogLevel::Warn, "Audio already running; acking START");
+        sendAck(network_, clock_, protocol::IoT::RecordCommand::START, request_id, true);
         return;
     }
 
-    s.request_id.store(request_id);
-    s.running.store(true);
-    s.run_state.store(RunState::Running);
-    s.task.store(svc.tasks.start("audio_proc_task", kTaskStack, kTaskPriority, kTaskCore,
-                                 audio_task, nullptr));
+    request_id_.store(request_id);
+    running_.store(true);
+    run_state_.store(RunState::Running);
+    task_.store(tasks_.start("audio_proc_task", kTaskStack, kTaskPriority, kTaskCore,
+                             taskEntry, this));
 
-    if (s.task.load() == nullptr) {
-        svc.log.logf(core::LogLevel::Error, "Failed to create audio task!");
-        s.run_state.store(RunState::Stopped);
-        s.running.store(false);
-        send_ack(svc, protocol::IoT::RecordCommand::START, request_id, false,
-                 "task create failed");
+    if (task_.load() == nullptr) {
+        logger_.logf(LogLevel::Error, "Failed to create audio task!");
+        run_state_.store(RunState::Stopped);
+        running_.store(false);
+        sendAck(network_, clock_, protocol::IoT::RecordCommand::START, request_id,
+                false, "task create failed");
         return;
     }
-    // START ack is sent by audio_task once open()/init() actually succeeded.
+    // START ack is sent by taskLoop once open()/init() actually succeeded.
 }
 
-void stop(core::IAppServices& svc, uint32_t request_id, bool ack) {
-    services() = &svc;
-    auto& s = state();
-
-    if (s.run_state.load() == RunState::Stopped) {
-        svc.log.logf(core::LogLevel::Warn, "Audio already stopped");
+void AudioService::stop(uint32_t request_id, bool ack) {
+    if (run_state_.load() == RunState::Stopped) {
+        logger_.logf(LogLevel::Warn, "Audio already stopped");
         if (ack) {
-            send_ack(svc, protocol::IoT::RecordCommand::STOP, request_id, true);
+            sendAck(network_, clock_, protocol::IoT::RecordCommand::STOP, request_id, true);
         }
         return;
     }
 
-    svc.log.logf(core::LogLevel::Info, "Stopping audio task...");
-    s.run_state.store(RunState::Stopping);
-    s.running.store(false);
+    logger_.logf(LogLevel::Info, "Stopping audio task...");
+    run_state_.store(RunState::Stopping);
+    running_.store(false);
 
     int waited = 0;
-    while (s.task.load() != nullptr && waited < kStopTimeoutMs) {
-        svc.tasks.delayMs(kLoopDelayMs);
+    while (task_.load() != nullptr && waited < kStopTimeoutMs) {
+        tasks_.delayMs(kLoopDelayMs);
         waited += kLoopDelayMs;
     }
 
-    if (s.task.load() != nullptr) {
-        // Never vTaskDelete a task that may hold NetState::mutex or heap locks.
-        // The task will finish on its own; run_state stays Stopping until then,
-        // and start() waits for it before creating a new task.
-        svc.log.logf(core::LogLevel::Error,
+    if (task_.load() != nullptr) {
+        // Never vTaskDelete a task that may hold heap/lock state. The task will
+        // finish on its own; run_state stays Stopping until then, and start()
+        // waits for it before creating a new task.
+        logger_.logf(LogLevel::Error,
                      "Audio task did not exit within %d ms; leaving it to finish",
                      kStopTimeoutMs);
         return;
     }
 
-    s.run_state.store(RunState::Stopped);
-    svc.log.logf(core::LogLevel::Info, "Audio task stopped");
+    run_state_.store(RunState::Stopped);
+    logger_.logf(LogLevel::Info, "Audio task stopped");
     if (ack) {
-        send_ack(svc, protocol::IoT::RecordCommand::STOP, request_id, true);
+        sendAck(network_, clock_, protocol::IoT::RecordCommand::STOP, request_id, true);
     }
 }
 
-bool is_running() {
-    return state().run_state.load() != RunState::Stopped;
+bool AudioService::isRunning() const {
+    return run_state_.load() != RunState::Stopped;
 }
 
-} // namespace AudioService
+} // namespace core::app
