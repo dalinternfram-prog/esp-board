@@ -48,10 +48,27 @@ inline std::optional<UdpConnection> openUdpConnection(const char* host, const ch
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_protocol = IPPROTO_UDP;
 
+    // Numeric IPv4/IPv6 literals must never enter the lwIP DNS machinery:
+    // besides being unnecessary, the netconn DNS completion path can assert on
+    // a reused semaphore when a reconnect races an earlier lookup.
+    struct in_addr  v4 {};
+    struct in6_addr v6 {};
+    bool numeric = false;
+    if (host != nullptr && inet_pton(AF_INET, host, &v4) == 1) {
+        hints.ai_family = AF_INET;
+        hints.ai_flags |= AI_NUMERICHOST;
+        numeric = true;
+    } else if (host != nullptr && inet_pton(AF_INET6, host, &v6) == 1) {
+        hints.ai_family = AF_INET6;
+        hints.ai_flags |= AI_NUMERICHOST;
+        numeric = true;
+    }
+
     struct addrinfo* res = nullptr;
     const int err = getaddrinfo(host, port, &hints, &res);
     if (err != 0 || res == nullptr) {
-        LOG_E(TAG, "Failed to resolve hostname %s: error %d", host, err);
+        LOG_E(TAG, "Failed to resolve hostname %s: error %d",
+              host != nullptr ? host : "(null)", err);
         return std::nullopt;
     }
 

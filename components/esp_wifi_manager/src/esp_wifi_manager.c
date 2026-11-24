@@ -492,6 +492,22 @@ static void wifi_mgr_task(void *arg)
                     break;
                     
                 case WM_INT_EVT_STA_DISCONNECTED: {
+                    // ===== BEGIN factory_01 PATCH v3 =====
+                    // A disconnect from an earlier failed attempt can still be
+                    // queued when the retry has already succeeded and GOT_IP
+                    // has set WIFI_CONNECTED_BIT. Processing it tears down a
+                    // healthy link:
+                    //   reason 202 -> Auto-reconnect 5 s -> force disconnect
+                    //   reason 8 -> connect again -> endless loop.
+                    // A real disconnect clears WIFI_CONNECTED_BIT in
+                    // wifi_event_handler() BEFORE queueing this event, so the
+                    // bit is a reliable "link is up" check here.
+                    if (xEventGroupGetBits(g_wifi_mgr->event_group) & WIFI_CONNECTED_BIT) {
+                        ESP_LOGW(TAG, "Ignoring stale disconnect event (reason %d); link is up",
+                                 evt.data.disconnect.reason);
+                        break;
+                    }
+                    // ===== END factory_01 PATCH v3 =====
                     g_wifi_mgr->state = WIFI_STATE_DISCONNECTED;
                     xEventGroupClearBits(g_wifi_mgr->event_group, WIFI_CONNECTED_BIT);
                     xEventGroupSetBits(g_wifi_mgr->event_group, WIFI_FAIL_BIT);

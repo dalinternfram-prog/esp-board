@@ -3,7 +3,7 @@
 #include "sdkconfig.h"
 
 #ifndef CONFIG_APP_SERVER_HOST
-#define CONFIG_APP_SERVER_HOST "172.30.165.156"
+#define CONFIG_APP_SERVER_HOST "172.30.165.29"
 #endif
 #ifndef CONFIG_APP_SERVER_PORT
 #define CONFIG_APP_SERVER_PORT "8080"

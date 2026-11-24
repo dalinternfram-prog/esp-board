@@ -13,7 +13,12 @@ namespace core::app {
 namespace {
 
 constexpr uint32_t kWorkerTickMs     = 10;
-constexpr uint32_t kWorkerStackBytes = 8192;
+// 8 KB was too small for the KCP flush -> lwIP netconn/socket send path:
+// the first audio packet overflowed this task's stack and corrupted its
+// pthread TLS, faulting in pthread_getspecific(). 16 KB keeps the stack in
+// internal RAM (the 32 KB largest-block limit here is tighter) while giving
+// the send path headroom.
+constexpr uint32_t kWorkerStackBytes = 16384;
 constexpr int      kWorkerPriority   = 5;
 constexpr int      kWorkerCore       = 1;
 constexpr int      kWorkerExitWaitMs = 2000;

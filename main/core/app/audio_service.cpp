@@ -80,12 +80,19 @@ void AudioService::taskLoop() {
     AudioPipeline pipeline(
         input_, encoder_, clock_, logger_,
         [this](const Bytes& compressed, uint32_t timestamp_ms) {
-            // Compact v2 audio packet: codec/sampleRate/channels are
-            // device-static and registered once, so only the per-frame fields
-            // (timestamp, duration, payload) go on the wire.
-            network_.send(protocol::IoT::client::encodeAudioPayload(
-                compressed, static_cast<int64_t>(timestamp_ms),
-                encoder_.frameDurationMs()));
+            // Send the per-packet codec metadata. The capture hardware is the
+            // most variable part of the product: it defines the sample rate
+            // and channel count, and the server records them into the file
+            // header so the app plays back with the REAL format instead of
+            // assuming 16 kHz stereo.
+            network_.send(protocol::IoT::client::encodeAudio(
+                protocol::IoT::AudioPacket{
+                    static_cast<int64_t>(timestamp_ms),
+                    encoder_.frameDurationMs(),
+                    compressed,
+                    1,   // Opus
+                    encoder_.sampleRate(),
+                    encoder_.channelCount()}));
         });
 
     while (running_.load()) {

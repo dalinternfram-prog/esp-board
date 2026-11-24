@@ -234,7 +234,7 @@ struct AudioConfig {
     uint32_t bits_per_chan = 32;              // I2S slot width (2 x 32-bit)
     // Width of the PCM handed to the encoder. The capture driver unpacks the
     // board's 32-bit slots into this format; Opus must be configured with it.
-    uint32_t pcm_bits_per_chan = 16;
+    uint32_t pcm_bits_per_chan = 32;
     uint32_t target_frame_duration_ms = 20;   // Opus requires 20 ms
 };
 

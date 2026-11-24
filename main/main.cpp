@@ -9,10 +9,14 @@
 
 #include "app_context.hpp"
 #include "core/app/prog.hpp"
+#include "esp_hardware/adapters/storage/EspNvsDump.hpp"
 
 extern "C" void app_main() {
     // Program-lifetime composition root: a plain object, no singleton accessor.
     static app::AppContext context;
+
+    // Boot-time diagnostic: print every NVS key/value once (secrets redacted).
+    adapters::dumpNvsContents();
 
     hardware::boot(context.audio_config);
     context.startMedia();

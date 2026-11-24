@@ -24,11 +24,20 @@ AudioCaptureDriver::AudioCaptureDriver(const core::AudioConfig& config)
         config_.sample_rate, config_.target_frame_duration_ms,
         config_.channel_count, config_.bits_per_chan);
 
+    // The I2S capture buffer must live in internal RAM on this board. PSRAM
+    // shares the cache/MMU path with the flash/XIP mappings; keeping the audio
+    // buffer in PSRAM corrupts the heap on the first frame. Fall back to PSRAM
+    // only if internal RAM is genuinely unavailable.
     raw_dma_buffer_ = static_cast<int16_t*>(
-        heap_caps_malloc(buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        heap_caps_malloc(buffer_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (raw_dma_buffer_ == nullptr) {
+        ESP_LOGW(TAG, "Internal audio buffer unavailable; trying PSRAM");
+        raw_dma_buffer_ = static_cast<int16_t*>(
+            heap_caps_malloc(buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    }
 
     if (raw_dma_buffer_ == nullptr) {
-        ESP_LOGE(TAG, "Failed to allocate %zu bytes in PSRAM for audio buffer", buffer_bytes);
+        ESP_LOGE(TAG, "Failed to allocate %zu bytes for audio buffer", buffer_bytes);
     } else {
         ESP_LOGI(TAG, "Audio Hardware Capture initialized (%zu channels, %zu samples/channel, %lu ms duration)",
                  channel_count_, chunk_size_,
@@ -79,20 +88,16 @@ esp_err_t AudioCaptureDriver::readSamples() {
     const std::size_t buffer_bytes = general::audio::bytesPerFrame(
         config_.sample_rate, config_.target_frame_duration_ms,
         config_.channel_count, config_.bits_per_chan);
-    size_t bytes_read = 0;
 
-    esp_err_t err = i2s_channel_read(bsp_i2s_get_rx_handle(), raw_dma_buffer_,
-                                     buffer_bytes, &bytes_read,
-                                     /*timeout_ms=*/100);  // < AudioService stop window
-    if (err != ESP_OK || bytes_read == 0) {
-        ESP_LOGW(TAG, "Failed to read PCM data directly from I2S");
-        return ESP_FAIL;
-    }
-
-    if (bytes_read != buffer_bytes) {
-        ESP_LOGW(TAG, "Short I2S read: %u / %u bytes",
-                 static_cast<unsigned>(bytes_read),
-                 static_cast<unsigned>(buffer_bytes));
+    // Use the BSP/vendor capture path instead of a raw i2s_channel_read().
+    // The record codec device owns the I2S RX channel and its DMA/queue state;
+    // reading the channel directly bypasses that ownership and corrupts the
+    // I2S driver's FreeRTOS queue lists (xQueueReceive/vListInsert panic).
+    const esp_err_t err = esp_get_feed_data(
+        /*is_get_raw_channel=*/true, raw_dma_buffer_,
+        static_cast<int>(buffer_bytes));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_get_feed_data failed: %s", esp_err_to_name(err));
         return ESP_FAIL;
     }
 
